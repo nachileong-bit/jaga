@@ -1,0 +1,25 @@
+{
+  "name": "two_missed_checkins",
+  "description": "Two missed check-ins (silence). Trajectory should remain unknown, never 'better'. Should stay KEEP_WATCHING but missedCheckins should increment.",
+  "symptom": "cough",
+  "mode": "independent",
+  "onset": {
+    "rawText": "started coughing",
+    "latestPossible": "2026-01-01T08:00:00.000Z",
+    "confidence": "exact"
+  },
+  "events": [
+    { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough" },
+    { "day": 7, "kind": "checkin", "trajectory": "same", "rawText": "still coughing" },
+    { "day": 14, "kind": "silence" },
+    { "day": 21, "kind": "silence" },
+    { "day": 22, "kind": "checkin", "trajectory": "same", "rawText": "still coughing" }
+  ],
+  "expectations": [
+    { "day": 0, "action": "KEEP_WATCHING" },
+    { "day": 7, "action": "KEEP_WATCHING" },
+    { "day": 14, "action": "KEEP_WATCHING" },
+    { "day": 21, "action": "KEEP_WATCHING" },
+    { "day": 22, "action": "KEEP_WATCHING" }
+  ]
+}

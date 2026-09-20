@@ -1,0 +1,25 @@
+{
+  "name": "clears_before_threshold",
+  "description": "Cough clears before the 14-day self-treatment threshold. Should stay KEEP_WATCHING.",
+  "symptom": "cough",
+  "mode": "independent",
+  "onset": {
+    "rawText": "started coughing",
+    "latestPossible": "2026-01-01T08:00:00.000Z",
+    "confidence": "exact"
+  },
+  "events": [
+    { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough" },
+    { "day": 3, "kind": "checkin", "trajectory": "better", "rawText": "getting better" },
+    { "day": 7, "kind": "checkin", "trajectory": "better", "rawText": "much better" },
+    { "day": 10, "kind": "checkin", "trajectory": "better", "rawText": "almost gone" },
+    { "day": 12, "kind": "checkin", "trajectory": "better", "rawText": "cough is gone" }
+  ],
+  "expectations": [
+    { "day": 0, "action": "KEEP_WATCHING" },
+    { "day": 3, "action": "KEEP_WATCHING" },
+    { "day": 7, "action": "KEEP_WATCHING" },
+    { "day": 10, "action": "KEEP_WATCHING" },
+    { "day": 12, "action": "KEEP_WATCHING" }
+  ]
+}

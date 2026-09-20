@@ -1,0 +1,44 @@
+{
+  "id": "mouth_ulcer",
+  "version": "0.1.0",
+  "status": "PENDING_CLINICIAN_REVIEW",
+  "reviewer": null,
+  "sources": [
+    {
+      "label": "HealthHub: Mouth Ulcers",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/mouth_ulcers"
+    }
+  ],
+  "redFlags": [
+    { "key": "ulcer_spreading_or_growing", "action": "SEE_DOCTOR_TODAY" },
+    { "key": "difficulty_swallowing_or_breathing", "action": "EMERGENCY_995" }
+  ],
+  "rules": [
+    {
+      "id": "ulcer_not_healing",
+      "when": {
+        "minDurationDays": 14,
+        "trajectoryIn": ["same", "worse", "intermittent"]
+      },
+      "action": "SEE_GP",
+      "explain": "Your mouth ulcer has not healed after two weeks. Consider seeing a GP or dentist.",
+      "sourceIndex": 0
+    },
+    {
+      "id": "worsening",
+      "when": { "trajectoryIn": ["worse"] },
+      "action": "SEE_GP",
+      "explain": "Your mouth ulcer is getting worse. Consider seeing a GP or dentist.",
+      "sourceIndex": 0
+    },
+    {
+      "id": "long_duration",
+      "when": { "minDurationDays": 21 },
+      "action": "SEE_GP",
+      "explain": "Your mouth ulcer has lasted longer than usual. Consider seeing a GP or dentist.",
+      "sourceIndex": 0
+    }
+  ],
+  "checkinEveryDays": 5,
+  "resolvedAfterSymptomFreeDays": null
+}

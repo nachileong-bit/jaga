@@ -1,0 +1,52 @@
+{
+  "id": "cough",
+  "version": "0.1.0",
+  "status": "PENDING_CLINICIAN_REVIEW",
+  "reviewer": null,
+  "sources": [
+    {
+      "label": "HealthHub: Cough",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/cough"
+    }
+  ],
+  "redFlags": [
+    { "key": "blood", "action": "SEE_DOCTOR_TODAY" },
+    { "key": "breathless_or_chest_pain", "action": "EMERGENCY_995" }
+  ],
+  "rules": [
+    {
+      "id": "discordance",
+      "when": { "discordance": true, "trajectoryIn": ["same", "worse", "intermittent"] },
+      "action": "SEE_GP",
+      "explain": "There is a disagreement about how the cough is progressing. For safety, consider seeing a GP.",
+      "sourceIndex": 0
+    },
+    {
+      "id": "not_better_after_self_treatment",
+      "when": {
+        "minDurationDays": 14,
+        "selfTreatment": true,
+        "trajectoryIn": ["same", "worse", "intermittent"]
+      },
+      "action": "SEE_GP",
+      "explain": "Your cough has not improved after self-treatment for over two weeks. Consider seeing a GP.",
+      "sourceIndex": 0
+    },
+    {
+      "id": "worsening",
+      "when": { "trajectoryIn": ["worse"] },
+      "action": "SEE_GP",
+      "explain": "Your cough is getting worse. Consider seeing a GP.",
+      "sourceIndex": 0
+    },
+    {
+      "id": "long_duration",
+      "when": { "minDurationDays": 56 },
+      "action": "SEE_GP",
+      "explain": "Your cough has persisted for a long time. Consider seeing a GP to check underlying causes.",
+      "sourceIndex": 0
+    }
+  ],
+  "checkinEveryDays": 7,
+  "resolvedAfterSymptomFreeDays": null
+}

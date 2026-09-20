@@ -1,0 +1,23 @@
+{
+  "name": "still_there_after_self_treatment",
+  "description": "Cough persists after self-treatment beyond 14 days. Should fire not_better_after_self_treatment → SEE_GP.",
+  "symptom": "cough",
+  "mode": "independent",
+  "onset": {
+    "rawText": "started coughing",
+    "latestPossible": "2026-01-01T08:00:00.000Z",
+    "confidence": "exact"
+  },
+  "events": [
+    { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough" },
+    { "day": 3, "kind": "self_treatment", "rawText": "took cough syrup" },
+    { "day": 7, "kind": "checkin", "trajectory": "same", "rawText": "still coughing" },
+    { "day": 14, "kind": "checkin", "trajectory": "same", "rawText": "no improvement" },
+    { "day": 15, "kind": "checkin", "trajectory": "same", "rawText": "still the same" }
+  ],
+  "expectations": [
+    { "day": 0, "action": "KEEP_WATCHING" },
+    { "day": 7, "action": "KEEP_WATCHING" },
+    { "day": 15, "action": "SEE_GP", "ruleId": "not_better_after_self_treatment" }
+  ]
+}

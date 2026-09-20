@@ -1,0 +1,23 @@
+{
+  "name": "improves_then_returns",
+  "description": "Cough improves then returns. Should become RECURRENT and fire worsening → SEE_GP.",
+  "symptom": "cough",
+  "mode": "independent",
+  "onset": {
+    "rawText": "started coughing",
+    "latestPossible": "2026-01-01T08:00:00.000Z",
+    "confidence": "exact"
+  },
+  "events": [
+    { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough" },
+    { "day": 5, "kind": "checkin", "trajectory": "better", "rawText": "getting better" },
+    { "day": 10, "kind": "checkin", "trajectory": "worse", "rawText": "it came back worse" },
+    { "day": 14, "kind": "checkin", "trajectory": "worse", "rawText": "still bad" }
+  ],
+  "expectations": [
+    { "day": 0, "action": "KEEP_WATCHING" },
+    { "day": 5, "action": "KEEP_WATCHING" },
+    { "day": 10, "action": "SEE_GP", "ruleId": "worsening" },
+    { "day": 14, "action": "SEE_GP", "ruleId": "worsening" }
+  ]
+}
