@@ -51,10 +51,11 @@ function evaluateRule(
     if (hasSelfTreatment !== when.selfTreatment) return false;
   }
 
-  // trajectoryIn
+  // trajectoryIn — treat "gone" like "better" for policy rule evaluation (spec)
   if (when.trajectoryIn !== undefined && when.trajectoryIn.length > 0) {
     const traj: Trajectory = episode.trajectory;
-    if (!when.trajectoryIn.includes(traj)) return false;
+    const effectiveTraj: Trajectory = traj === "gone" ? "better" : traj;
+    if (!when.trajectoryIn.includes(effectiveTraj)) return false;
   }
 
   return true;

@@ -113,7 +113,8 @@ export async function processObservation(
       priorObservations,
       observation,
       clock,
-      policy.checkinEveryDays
+      policy.checkinEveryDays,
+      policy.resolvedAfterSymptomFreeDays
     );
     store.updateEpisode(updated);
     return {
@@ -128,7 +129,8 @@ export async function processObservation(
     priorObservations,
     observation,
     clock,
-    policy.checkinEveryDays
+    policy.checkinEveryDays,
+    policy.resolvedAfterSymptomFreeDays
   );
 
   // 5. Update missed check-ins (silence handling)

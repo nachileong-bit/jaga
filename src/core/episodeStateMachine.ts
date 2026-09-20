@@ -17,19 +17,29 @@ import type { Clock, Episode, Observation, Trajectory } from "./types.js";
  */
 export function nextState(
   current: Episode["state"],
-  trajectory: Trajectory
+  trajectory: Trajectory,
+  resolvedThreshold: number | null = null,
+  symptomFreeDays: number = 0
 ): Episode["state"] {
+  // "gone" is treated like "better" for state transitions (spec: treat "gone" like "better")
+  const effectiveTraj: Trajectory =
+    trajectory === "gone" ? "better" : trajectory;
+
   switch (current) {
     case "ACTIVE":
-      if (trajectory === "better") return "IMPROVING";
+      if (effectiveTraj === "better") return "IMPROVING";
       return "ACTIVE";
     case "IMPROVING":
-      if (trajectory === "same" || trajectory === "worse")
+      if (effectiveTraj === "same" || effectiveTraj === "worse")
         return "RECURRENT";
-      if (trajectory === "intermittent") return "RECURRENT";
+      if (effectiveTraj === "intermittent") return "RECURRENT";
+      // effectiveTraj === "better" — check if resolved threshold is met
+      if (resolvedThreshold !== null && symptomFreeDays >= resolvedThreshold) {
+        return "RESOLVED";
+      }
       return "IMPROVING";
     case "RECURRENT":
-      if (trajectory === "better") return "IMPROVING";
+      if (effectiveTraj === "better") return "IMPROVING";
       return "ACTIVE";
     case "RESOLVED":
       return "RESOLVED";
@@ -81,6 +91,10 @@ export function computeTrajectory(
   const userTraj: Trajectory = lastUserTraj ?? "unknown";
   const supportTraj: Trajectory | undefined = lastSupportTraj;
 
+  // Treat "gone" like "better" for discordance purposes (spec)
+  const userEff = userTraj === "gone" ? "better" : userTraj;
+  const supportEff = supportTraj === "gone" ? "better" : supportTraj;
+
   // Check if both reports fall within the same check-in window
   const withinWindow =
     lastUserTrajObs !== undefined &&
@@ -91,33 +105,33 @@ export function computeTrajectory(
     ) <=
       checkinEveryDays * 86_400_000;
 
-  // Discordance: user says better, support says same/worse/intermittent
+  // Discordance: user says better/gone, support says same/worse/intermittent
   // — only if both reports are within the same check-in window
   if (
     withinWindow &&
-    userTraj === "better" &&
-    supportTraj !== undefined &&
-    supportTraj !== "better" &&
-    supportTraj !== "unknown"
+    userEff === "better" &&
+    supportEff !== undefined &&
+    supportEff !== "better" &&
+    supportEff !== "unknown"
   ) {
     // Use the worse trajectory for safety
-    return { trajectory: supportTraj, discordance: true };
+    return { trajectory: supportTraj!, discordance: true };
   }
 
-  // Discordance: support says better, user says same/worse
+  // Discordance: support says better/gone, user says same/worse
   // — only if both reports are within the same check-in window
   if (
     withinWindow &&
-    supportTraj === "better" &&
-    userTraj !== "better" &&
-    userTraj !== "unknown"
+    supportEff === "better" &&
+    userEff !== "better" &&
+    userEff !== "unknown"
   ) {
     return { trajectory: userTraj, discordance: true };
   }
 
   // No conflict — last user trajectory wins, fall back to support
   return {
-    trajectory: userTraj !== "unknown" ? userTraj : (supportTraj ?? "unknown"),
+    trajectory: userEff !== "unknown" ? userEff : (supportEff ?? "unknown"),
     discordance: false,
   };
 }
@@ -171,15 +185,45 @@ export function applyObservation(
   observations: Observation[],
   newObs: Observation,
   clock: Clock,
-  checkinEveryDays: number
+  checkinEveryDays: number,
+  resolvedThreshold: number | null = null
 ): Episode {
   const allObs = [...observations, newObs];
 
   // Compute trajectory from all observations including the new one
   const { trajectory, discordance } = computeTrajectory(allObs, checkinEveryDays);
 
+  // Compute symptom-free days if trajectory is "better" or "gone"
+  // (treat "gone" like "better" for resolution)
+  const effectiveTraj: Trajectory =
+    trajectory === "gone" ? "better" : trajectory;
+  let symptomFreeDays = 0;
+  if (effectiveTraj === "better") {
+    // Count consecutive "better"/"gone" check-ins from the end
+    const trajObs = [...allObs]
+      .filter((o) => o.trajectory !== undefined)
+      .reverse();
+    for (const o of trajObs) {
+      const t: Trajectory = o.trajectory!;
+      const eff = t === "gone" ? "better" : t;
+      if (eff === "better") {
+        symptomFreeDays += 1;
+      } else {
+        break;
+      }
+    }
+    // Convert count to days — approximate using minDurationDays
+    // Each check-in spans roughly checkinEveryDays days
+    symptomFreeDays = symptomFreeDays * checkinEveryDays;
+  }
+
   // Determine new state
-  const newState = nextState(episode.state, trajectory);
+  const newState = nextState(
+    episode.state,
+    trajectory,
+    resolvedThreshold,
+    symptomFreeDays
+  );
 
   // Update missed checkins
   let missedCheckins = episode.missedCheckins;
@@ -210,6 +254,8 @@ export function shouldResolve(
   threshold: number | null
 ): boolean {
   if (threshold === null) return false;
-  if (episode.trajectory !== "better") return false;
+  // Treat "gone" like "better" (spec)
+  const effectiveTraj = episode.trajectory === "gone" ? "better" : episode.trajectory;
+  if (effectiveTraj !== "better") return false;
   return symptomFreeDays >= threshold;
 }

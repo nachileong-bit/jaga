@@ -11,7 +11,7 @@ Hackathon: Tencent Cloud x AI Singapore 2026, Healthcare track, Challenge 1
 
 ## Status
 
-**Milestone M1 (core engine) is complete.** No AI, no WhatsApp, no UI yet.
+**Milestones M1 (core engine) and M2 (web demo) are complete.**
 
 ## Run tests
 
@@ -20,6 +20,17 @@ npm install
 npm test          # Vitest unit tests
 npm run timelines # Timeline runner (replays synthetic timelines)
 ```
+
+## Run the demo
+
+```bash
+npm install
+npm run dev      # starts Fastify at http://localhost:3000
+```
+
+Open `http://localhost:3000/web/` in your browser. Pick a scenario
+(Mr Tan — supported / Ms Lim — independent), use the day slider to advance
+the simulated clock, and tap the check-in buttons.
 
 ## What M1 includes
 
@@ -41,6 +52,22 @@ npm run timelines # Timeline runner (replays synthetic timelines)
   self-treatment; improves then returns; two missed check-ins; red flag on
   day 9; user says better while support person says still coughing.
 
+## What M2 adds
+
+- **Web demo page** — `web/index.html`, `web/style.css`, `web/app.js`. Plain
+  HTML/CSS/vanilla JS, no framework, no build step. Phone-frame chat on the
+  left, Jaga Clock panel and controls on the right.
+- **Fastify server** (`src/server.ts`) — serves `/web` as static files and a
+  small JSON API (`reset`, `message`, `advance`, `state`). Each browser session
+  gets its own in-memory SQLite store and SimulatedClock.
+- **Scripted extractor** (`src/llm/ScriptedExtractor.ts`) — stands in for the
+  LLM until M3. Maps button taps and canned phrases to structured observations.
+- **Conversation flow** (`src/conversation/`) — orchestrates the scripted
+  extractor and the engine, produces the chat transcript.
+- **Copy strings** (`src/copy/en.ts`) — all user-facing strings in one file.
+- **"gone" trajectory** — added to the Trajectory type, treated like "better"
+  for policy rules and state transitions.
+
 ## Rules that must never be broken
 
 See `docs/SPEC.md` for the full spec. Key invariants enforced in code:
@@ -57,8 +84,13 @@ See `docs/SPEC.md` for the full spec. Key invariants enforced in code:
 
 ```
 docs/                 spec
-policies/             cough.json, mouth-ulcer.json (data)
+policies/             cough.json, mouth_ulcer.json (data)
 src/core/             types, clock, repository, state machine, policy evaluator, engine
+src/llm/              Extractor interface, ScriptedExtractor
+src/conversation/     demo conversation flow
+src/copy/             user-facing strings (en.ts)
+src/server.ts         Fastify app
+web/                  demo page: phone frame + day slider + live Jaga Clock panel
 tests/unit/           Vitest unit tests
 tests/timelines/      *.json synthetic timelines + runner
 ```

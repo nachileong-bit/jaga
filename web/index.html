@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jaga — Web Demo</title>
+  <link rel="stylesheet" href="/web/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Left: Phone-frame chat -->
+    <div class="phone-frame">
+      <div class="phone-header">
+        <div class="phone-header-left">
+          <span class="phone-back">&larr;</span>
+          <div class="phone-contact">
+            <div class="phone-contact-name" id="contact-name">Jaga</div>
+            <div class="phone-contact-status" id="contact-status">online</div>
+          </div>
+        </div>
+      </div>
+      <div class="chat-body" id="chat-body">
+        <!-- Messages go here -->
+      </div>
+      <div class="quick-buttons" id="quick-buttons">
+        <button class="quick-btn" data-button="Took medicine">Took medicine</button>
+        <button class="quick-btn" data-button="Noticed blood">Noticed blood</button>
+      </div>
+      <div class="chat-input-bar">
+        <input
+          type="text"
+          id="chat-input"
+          placeholder="Type a message..."
+          autocomplete="off"
+        />
+        <button id="send-btn" class="send-btn">Send</button>
+      </div>
+    </div>
+
+    <!-- Right: Jaga Clock panel + controls -->
+    <div class="side-panel">
+      <div class="clock-panel">
+        <div class="panel-header">
+          <h2>Jaga Clock</h2>
+          <span class="badge pending">PENDING CLINICIAN REVIEW</span>
+        </div>
+        <div class="clock-content" id="clock-content">
+          <p class="placeholder">Start a scenario to see the clock.</p>
+        </div>
+      </div>
+
+      <div class="controls-panel">
+        <div class="control-group">
+          <label for="scenario-select">Scenario</label>
+          <select id="scenario-select">
+            <option value="mr_tan">Mr Tan (Supported)</option>
+            <option value="ms_lim">Ms Lim (Independent)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label>
+            Day <span id="day-value">0</span>
+            <span class="sim-label">Simulated clock. Time is compressed for the demo.</span>
+          </label>
+          <input type="range" id="day-slider" min="0" max="60" value="0" />
+        </div>
+
+        <div class="control-buttons">
+          <button id="reset-btn" class="ctrl-btn">Reset</button>
+          <button id="next-checkin-btn" class="ctrl-btn">Next check-in</button>
+        </div>
+
+        <div class="control-group">
+          <label>
+            <input type="checkbox" id="mei-ling-toggle" disabled />
+            Speak as Mei Ling
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 // No LLM, no network, no I/O here — pure data.
 
 export type Mode = "independent" | "supported" | "assisted";
-export type Trajectory = "better" | "same" | "worse" | "intermittent" | "unknown";
+export type Trajectory = "better" | "same" | "worse" | "intermittent" | "gone" | "unknown";
 export type EpisodeState = "ACTIVE" | "IMPROVING" | "RESOLVED" | "RECURRENT";
 export type Confidence = "exact" | "approximate" | "unknown";
 export type Reporter = "user" | "support_person";

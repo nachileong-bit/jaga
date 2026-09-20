@@ -1,0 +1,21 @@
+{
+  "name": "discordance_still_coughing_at_night",
+  "description": "User says much better. Support person says he still coughs every night (same, not worse). No self-treatment, under any sourced threshold. Disagreement alone must NOT escalate: action stays KEEP_WATCHING, trajectory must not become better, and Jaga asks a neutral clarifying question.",
+  "symptom": "cough",
+  "mode": "supported",
+  "onset": {
+    "rawText": "started coughing",
+    "latestPossible": "2026-01-01T08:00:00.000Z",
+    "confidence": "exact"
+  },
+  "events": [
+    { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough", "reporter": "user" },
+    { "day": 7, "kind": "checkin", "trajectory": "better", "rawText": "much better already", "reporter": "user" },
+    { "day": 8, "kind": "checkin", "trajectory": "same", "rawText": "he is still coughing every night", "reporter": "support_person" }
+  ],
+  "expectations": [
+    { "day": 0, "action": "KEEP_WATCHING" },
+    { "day": 7, "action": "KEEP_WATCHING" },
+    { "day": 8, "action": "KEEP_WATCHING", "followUpsContains": ["ASK_CLARIFICATION"] }
+  ]
+}
