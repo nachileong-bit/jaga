@@ -5,13 +5,11 @@
 //
 // No LLM, no network, no UI — pure orchestration of core modules.
 
-import type { randomUUID } from "node:crypto";
 import type {
   Clock,
   Episode,
   Observation,
   Person,
-  Policy,
   PolicyResult,
 } from "./types.js";
 import type { Store } from "./repository.js";
@@ -70,14 +68,16 @@ export async function createEpisode(
 /**
  * Process an observation against an episode:
  * 1. Store the observation.
- * 2. Apply it to the episode state machine.
- * 3. Run red-flag screen (on every message, before clock logic).
- * 4. Run policy evaluator.
- * 5. Return the result.
+ * 2. Get all observations for this episode (now including the new one).
+ * 3. Red-flag screen (on every message, before clock logic).
+ * 4. Apply observation to the episode state machine.
+ *    Pass the PRIOR observations (excluding the new one) — applyObservation
+ *    appends the new one internally, so we must not pass it in twice.
+ * 5. Run policy evaluator.
+ * 6. If episode.discordance is true, add "ASK_CLARIFICATION" to followUps.
+ *    The action itself comes only from sourced policy rules or red flags.
  *
  * This function does NOT send anything to a support person — that's M4/M5.
- * It does NOT resolve episodes (resolvedAfterSymptomFreeDays is null in
- * placeholder policies), but the shouldResolve function is available.
  */
 export async function processObservation(
   store: Store,
@@ -99,18 +99,37 @@ export async function processObservation(
   // 2. Get all observations for this episode (including the new one)
   const allObservations = store.getObservationsForEpisode(episode.id);
 
+  // The prior observations (before the new one was stored) — used for
+  // applyObservation which appends the new observation itself.
+  const priorObservations = allObservations.filter((o) => o.id !== observation.id);
+
   // 3. Red-flag screen FIRST (rule 6: before any clock logic)
   const policy = loadPolicy(episode.symptom);
   const redFlagResult = screenRedFlags(allObservations, policy);
   if (redFlagResult) {
     // Red flag fires immediately — still update episode state for record
-    const updated = applyObservation(episode, allObservations, observation, clock);
+    const updated = applyObservation(
+      episode,
+      priorObservations,
+      observation,
+      clock,
+      policy.checkinEveryDays
+    );
     store.updateEpisode(updated);
-    return { result: redFlagResult, episode: updated };
+    return {
+      result: { ...redFlagResult, followUps: [] },
+      episode: updated,
+    };
   }
 
-  // 4. Apply observation to state machine
-  const updatedEpisode = applyObservation(episode, allObservations, observation, clock);
+  // 4. Apply observation to state machine (pass prior, not all — it appends newObs)
+  const updatedEpisode = applyObservation(
+    episode,
+    priorObservations,
+    observation,
+    clock,
+    policy.checkinEveryDays
+  );
 
   // 5. Update missed check-ins (silence handling)
   updatedEpisode.missedCheckins = computeMissedCheckins(
@@ -125,7 +144,14 @@ export async function processObservation(
   // 6. Evaluate policy
   const result = evaluatePolicy(updatedEpisode, allObservations, policy, clock);
 
-  // 7. Update lastActionAt
+  // 7. If discordance is detected, add ASK_CLARIFICATION as a follow-up.
+  //    This is NOT a medical action — it's a procedural follow-up. The action
+  //    itself comes only from sourced policy rules or red flags.
+  if (updatedEpisode.discordance && !result.followUps.includes("ASK_CLARIFICATION")) {
+    result.followUps.push("ASK_CLARIFICATION");
+  }
+
+  // 8. Update lastActionAt
   updatedEpisode.lastActionAt = clock.now();
   store.updateEpisode(updatedEpisode);
 

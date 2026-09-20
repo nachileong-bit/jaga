@@ -1,6 +1,6 @@
 {
   "name": "discordance_user_vs_support",
-  "description": "User says better, support person says still coughing. Discordance should be detected; worse trajectory used for safety.",
+  "description": "User says better, support person says worse. Discordance detected; worse trajectory used for safety. Action comes from sourced worsening rule; followUps contains ASK_CLARIFICATION.",
   "symptom": "cough",
   "mode": "supported",
   "onset": {
@@ -12,12 +12,12 @@
     { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough", "reporter": "user" },
     { "day": 7, "kind": "checkin", "trajectory": "same", "rawText": "still coughing", "reporter": "user" },
     { "day": 14, "kind": "checkin", "trajectory": "better", "rawText": "I feel better now", "reporter": "user" },
-    { "day": 15, "kind": "checkin", "trajectory": "same", "rawText": "still coughing", "reporter": "support_person" }
+    { "day": 15, "kind": "checkin", "trajectory": "worse", "rawText": "getting worse not better", "reporter": "support_person" }
   ],
   "expectations": [
     { "day": 0, "action": "KEEP_WATCHING" },
     { "day": 7, "action": "KEEP_WATCHING" },
     { "day": 14, "action": "KEEP_WATCHING" },
-    { "day": 15, "action": "SEE_GP", "ruleId": "discordance" }
+    { "day": 15, "action": "SEE_GP", "ruleId": "worsening", "followUpsContains": ["ASK_CLARIFICATION"] }
   ]
 }

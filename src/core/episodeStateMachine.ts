@@ -41,27 +41,37 @@ export function nextState(
 /**
  * Compute the effective trajectory of an episode from its observations.
  * The most recent user-reported trajectory wins, unless a support person
- * reports a contradicting trajectory (discordance).
+ * reports a contradicting trajectory (discordance) within the same check-in
+ * window.
+ *
+ * Discordance expiry: two contradicting reports only count as discordant if
+ * they fall within the same check-in window (policy.checkinEveryDays). If
+ * one report is from day 3 and the other from day 30, they are in different
+ * windows and not considered conflicting — the stale one is simply outdated.
  *
  * Discordance rule (spec rule 7): minimising by user or support person
  * can never overwrite recorded history. If user says "better" but support
- * person says "still coughing" (same/worse), we mark discordance=true and
- * use the worse trajectory for safety.
+ * person says "still coughing" (same/worse) within the same window, we mark
+ * discordance=true and use the worse trajectory for safety.
  */
 export function computeTrajectory(
-  observations: Observation[]
+  observations: Observation[],
+  checkinEveryDays: number
 ): { trajectory: Trajectory; discordance: boolean } {
   const userObs = observations.filter((o) => o.reporter === "user");
   const supportObs = observations.filter(
     (o) => o.reporter === "support_person"
   );
 
-  const lastUserTraj = [...userObs]
+  const lastUserTrajObs = [...userObs]
     .reverse()
-    .find((o) => o.trajectory !== undefined)?.trajectory;
-  const lastSupportTraj = [...supportObs]
+    .find((o) => o.trajectory !== undefined);
+  const lastSupportTrajObs = [...supportObs]
     .reverse()
-    .find((o) => o.trajectory !== undefined)?.trajectory;
+    .find((o) => o.trajectory !== undefined);
+
+  const lastUserTraj = lastUserTrajObs?.trajectory;
+  const lastSupportTraj = lastSupportTrajObs?.trajectory;
 
   // No trajectories reported at all
   if (lastUserTraj === undefined && lastSupportTraj === undefined) {
@@ -71,8 +81,20 @@ export function computeTrajectory(
   const userTraj: Trajectory = lastUserTraj ?? "unknown";
   const supportTraj: Trajectory | undefined = lastSupportTraj;
 
+  // Check if both reports fall within the same check-in window
+  const withinWindow =
+    lastUserTrajObs !== undefined &&
+    lastSupportTrajObs !== undefined &&
+    Math.abs(
+      new Date(lastUserTrajObs.at).getTime() -
+        new Date(lastSupportTrajObs.at).getTime()
+    ) <=
+      checkinEveryDays * 86_400_000;
+
   // Discordance: user says better, support says same/worse/intermittent
+  // — only if both reports are within the same check-in window
   if (
+    withinWindow &&
     userTraj === "better" &&
     supportTraj !== undefined &&
     supportTraj !== "better" &&
@@ -83,7 +105,9 @@ export function computeTrajectory(
   }
 
   // Discordance: support says better, user says same/worse
+  // — only if both reports are within the same check-in window
   if (
+    withinWindow &&
     supportTraj === "better" &&
     userTraj !== "better" &&
     userTraj !== "unknown"
@@ -138,17 +162,21 @@ export function computeMissedCheckins(
 /**
  * Apply a new observation to an episode, returning the updated episode state.
  * This is the core transition function — pure, no side effects.
+ *
+ * `observations` should be the PRIOR observations (before newObs).
+ * This function appends newObs to compute the full trajectory.
  */
 export function applyObservation(
   episode: Episode,
   observations: Observation[],
   newObs: Observation,
-  clock: Clock
+  clock: Clock,
+  checkinEveryDays: number
 ): Episode {
   const allObs = [...observations, newObs];
 
   // Compute trajectory from all observations including the new one
-  const { trajectory, discordance } = computeTrajectory(allObs);
+  const { trajectory, discordance } = computeTrajectory(allObs, checkinEveryDays);
 
   // Determine new state
   const newState = nextState(episode.state, trajectory);

@@ -30,6 +30,8 @@ const baseEpisode: Episode = {
   policyVersion: "0.1.0",
 };
 
+const CHECKIN_EVERY = 7;
+
 describe("nextState", () => {
   it("ACTIVE + better → IMPROVING", () => {
     expect(nextState("ACTIVE", "better")).toBe("IMPROVING");
@@ -74,7 +76,7 @@ describe("computeTrajectory", () => {
     const obs: Observation[] = [
       { id: "o1", episodeId: "e1", at: "2026-01-01", reporter: "user", kind: "mention" },
     ];
-    const result = computeTrajectory(obs);
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
     expect(result.trajectory).toBe("unknown");
     expect(result.discordance).toBe(false);
   });
@@ -84,38 +86,69 @@ describe("computeTrajectory", () => {
       { id: "o1", episodeId: "e1", at: "2026-01-01", reporter: "user", kind: "checkin", trajectory: "same" },
       { id: "o2", episodeId: "e1", at: "2026-01-02", reporter: "user", kind: "checkin", trajectory: "better" },
     ];
-    const result = computeTrajectory(obs);
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
     expect(result.trajectory).toBe("better");
     expect(result.discordance).toBe(false);
   });
 
-  it("detects discordance: user better, support same", () => {
+  it("detects discordance: user better, support same (same window)", () => {
     const obs: Observation[] = [
-      { id: "o1", episodeId: "e1", at: "2026-01-01", reporter: "user", kind: "checkin", trajectory: "same" },
-      { id: "o2", episodeId: "e1", at: "2026-01-02", reporter: "user", kind: "checkin", trajectory: "better" },
-      { id: "o3", episodeId: "e1", at: "2026-01-03", reporter: "support_person", kind: "checkin", trajectory: "same" },
+      { id: "o1", episodeId: "e1", at: "2026-01-01T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "same" },
+      { id: "o2", episodeId: "e1", at: "2026-01-02T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "better" },
+      { id: "o3", episodeId: "e1", at: "2026-01-03T08:00:00Z", reporter: "support_person", kind: "checkin", trajectory: "same" },
     ];
-    const result = computeTrajectory(obs);
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
     expect(result.trajectory).toBe("same");
     expect(result.discordance).toBe(true);
   });
 
-  it("detects discordance: support better, user worse", () => {
+  it("detects discordance: support better, user worse (same window)", () => {
     const obs: Observation[] = [
-      { id: "o1", episodeId: "e1", at: "2026-01-01", reporter: "support_person", kind: "checkin", trajectory: "better" },
-      { id: "o2", episodeId: "e1", at: "2026-01-02", reporter: "user", kind: "checkin", trajectory: "worse" },
+      { id: "o1", episodeId: "e1", at: "2026-01-01T08:00:00Z", reporter: "support_person", kind: "checkin", trajectory: "better" },
+      { id: "o2", episodeId: "e1", at: "2026-01-02T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "worse" },
     ];
-    const result = computeTrajectory(obs);
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
     expect(result.trajectory).toBe("worse");
     expect(result.discordance).toBe(true);
+  });
+
+  it("no discordance when reports are outside the check-in window", () => {
+    // Support says "same" on day 3, user says "better" on day 30 — different windows
+    const obs: Observation[] = [
+      { id: "o1", episodeId: "e1", at: "2026-01-03T08:00:00Z", reporter: "support_person", kind: "checkin", trajectory: "same" },
+      { id: "o2", episodeId: "e1", at: "2026-01-30T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "better" },
+    ];
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
+    expect(result.trajectory).toBe("better");
+    expect(result.discordance).toBe(false);
   });
 
   it("no conflict when support only", () => {
     const obs: Observation[] = [
       { id: "o1", episodeId: "e1", at: "2026-01-01", reporter: "support_person", kind: "checkin", trajectory: "same" },
     ];
-    const result = computeTrajectory(obs);
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
     expect(result.trajectory).toBe("same");
+    expect(result.discordance).toBe(false);
+  });
+
+  it("discordance at exact window boundary (7 days apart)", () => {
+    // Exactly 7 days apart = within window (<= checkinEveryDays)
+    const obs: Observation[] = [
+      { id: "o1", episodeId: "e1", at: "2026-01-01T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "better" },
+      { id: "o2", episodeId: "e1", at: "2026-01-08T08:00:00Z", reporter: "support_person", kind: "checkin", trajectory: "same" },
+    ];
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
+    expect(result.discordance).toBe(true);
+  });
+
+  it("no discordance just past window (8 days apart)", () => {
+    // 8 days apart = outside 7-day window
+    const obs: Observation[] = [
+      { id: "o1", episodeId: "e1", at: "2026-01-01T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "better" },
+      { id: "o2", episodeId: "e1", at: "2026-01-09T08:00:00Z", reporter: "support_person", kind: "checkin", trajectory: "same" },
+    ];
+    const result = computeTrajectory(obs, CHECKIN_EVERY);
     expect(result.discordance).toBe(false);
   });
 });
@@ -182,7 +215,7 @@ describe("applyObservation", () => {
       kind: "checkin",
       trajectory: "better",
     };
-    const result = applyObservation(baseEpisode, [], newObs, clock);
+    const result = applyObservation(baseEpisode, [], newObs, clock, CHECKIN_EVERY);
     expect(result.trajectory).toBe("better");
     expect(result.state).toBe("IMPROVING");
     expect(result.lastActionAt).toBe(clock.now());
@@ -200,7 +233,7 @@ describe("applyObservation", () => {
       kind: "checkin",
       trajectory: "same",
     };
-    const result = applyObservation(episodeWithMissed, [], newObs, clock);
+    const result = applyObservation(episodeWithMissed, [], newObs, clock, CHECKIN_EVERY);
     expect(result.missedCheckins).toBe(0);
   });
 
@@ -215,8 +248,29 @@ describe("applyObservation", () => {
       kind: "checkin",
       trajectory: "same",
     };
-    const result = applyObservation(baseEpisode, [], newObs, clock);
+    const result = applyObservation(baseEpisode, [], newObs, clock, CHECKIN_EVERY);
     expect(result.lastCheckinAt).toBe(clock.now());
+  });
+
+  it("does NOT double-count the new observation", () => {
+    // If we pass prior observations (without the new obs) and the new obs,
+    // applyObservation should append it once — not twice.
+    const clock = new SimulatedClock("2026-01-01T08:00:00.000Z");
+    clock.advanceToDay(5);
+    const priorObs: Observation[] = [
+      { id: "o1", episodeId: "e1", at: "2026-01-01T08:00:00Z", reporter: "user", kind: "checkin", trajectory: "same" },
+    ];
+    const newObs: Observation = {
+      id: "o2",
+      episodeId: "e1",
+      at: clock.now(),
+      reporter: "user",
+      kind: "checkin",
+      trajectory: "better",
+    };
+    // The result should reflect "better" from the new obs being counted once
+    const result = applyObservation(baseEpisode, priorObs, newObs, clock, CHECKIN_EVERY);
+    expect(result.trajectory).toBe("better");
   });
 });
 

@@ -86,7 +86,6 @@ export interface PolicyRuleWhen {
   minDurationDays?: number;
   selfTreatment?: boolean;
   trajectoryIn?: Trajectory[];
-  discordance?: boolean;
 }
 
 export interface PolicyRule {
@@ -124,6 +123,9 @@ export interface PolicyResult {
   source?: PolicySource;
   explain?: string;
   redFlagKey?: string;
+  reportedBy?: Reporter;
+  reportedAt?: string;
+  followUps: string[];
 }
 
 // ---- Clock interface ----
@@ -152,6 +154,7 @@ export interface TimelineExpectation {
   action: ActionType;
   ruleId?: string;
   redFlagKey?: string;
+  followUpsContains?: string[];
 }
 
 export interface Timeline {

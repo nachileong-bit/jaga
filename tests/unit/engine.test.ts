@@ -156,20 +156,55 @@ describe("Engine (integration)", () => {
       rawText: "I feel better",
     }, clock);
 
-    // Day 8: support person says same
+    // Day 8: support person says worse
     clock.advanceToDay(8);
     const ep2 = store.getEpisode(episode.id)!;
     const { result, episode: updated } = await processObservation(store, ep2, {
       at: clock.now(),
       reporter: "support_person",
       kind: "checkin",
-      trajectory: "same",
-      rawText: "still coughing",
+      trajectory: "worse",
+      rawText: "getting worse not better",
     }, clock);
 
     expect(updated.discordance).toBe(true);
-    expect(updated.trajectory).toBe("same");
+    expect(updated.trajectory).toBe("worse");
+    // Action comes from sourced rule (worsening), not a discordance rule
     expect(result.action).toBe("SEE_GP");
-    expect(result.ruleId).toBe("discordance");
+    expect(result.ruleId).toBe("worsening");
+    // followUps contains ASK_CLARIFICATION (procedural, not medical)
+    expect(result.followUps).toContain("ASK_CLARIFICATION");
+  });
+
+  it("red flag stays reported after later deny", async () => {
+    store.upsertPerson(basePerson);
+    clock.advanceToDay(0);
+    const episode = await createEpisode(basePerson, "cough", baseOnset, clock);
+    store.insertEpisode(episode);
+
+    // Day 9: user reports blood
+    clock.advanceToDay(9);
+    await processObservation(store, episode, {
+      at: clock.now(),
+      reporter: "user",
+      kind: "redflag_answer",
+      redFlags: { blood: "reported" },
+      rawText: "I saw blood",
+    }, clock);
+
+    // Day 10: user denies blood
+    clock.advanceToDay(10);
+    const ep2 = store.getEpisode(episode.id)!;
+    const { result } = await processObservation(store, ep2, {
+      at: clock.now(),
+      reporter: "user",
+      kind: "redflag_answer",
+      redFlags: { blood: "denied" },
+      rawText: "actually no blood",
+    }, clock);
+
+    // Still escalated — red flag is sticky
+    expect(result.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result.redFlagKey).toBe("blood");
   });
 });

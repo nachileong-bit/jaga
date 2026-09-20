@@ -57,11 +57,6 @@ function evaluateRule(
     if (!when.trajectoryIn.includes(traj)) return false;
   }
 
-  // discordance — only fires when episode.discordance matches
-  if (when.discordance !== undefined) {
-    if (episode.discordance !== when.discordance) return false;
-  }
-
   return true;
 }
 
@@ -82,7 +77,10 @@ export function evaluatePolicy(
   // 1. Red-flag screen first (rule 6: runs on EVERY message, before clock logic)
   const redFlagResult = screenRedFlags(observations, policy);
   if (redFlagResult) {
-    return redFlagResult;
+    return {
+      ...redFlagResult,
+      followUps: [],
+    };
   }
 
   // 2. Evaluate rules
@@ -96,6 +94,7 @@ export function evaluatePolicy(
         policyVersion: policy.version,
         source: rule.sourceIndex !== undefined ? policy.sources[rule.sourceIndex] : undefined,
         explain: rule.explain,
+        followUps: [],
       };
 
       if (
@@ -113,6 +112,7 @@ export function evaluatePolicy(
       action: "KEEP_WATCHING",
       policyId: policy.id,
       policyVersion: policy.version,
+      followUps: [],
     };
   }
 

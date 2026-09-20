@@ -4,7 +4,7 @@ import { evaluatePolicy } from "../../src/core/policyEvaluator.js";
 import { screenRedFlags, hasUnscreenedRedFlags } from "../../src/core/redFlagScreen.js";
 import { loadPolicy } from "../../src/core/policyLoader.js";
 import { SimulatedClock } from "../../src/core/clock.js";
-import type { Episode, Observation, Onset, Policy } from "../../src/core/types.js";
+import type { Episode, Observation, Onset } from "../../src/core/types.js";
 
 const clock = new SimulatedClock("2026-01-01T08:00:00.000Z");
 
@@ -27,7 +27,7 @@ const baseEpisode: Episode = {
   policyVersion: "0.1.0",
 };
 
-describe("screenRedFlags", () => {
+describe("screenRedFlags (sticky)", () => {
   const policy = loadPolicy("cough");
 
   it("returns null when no red flags reported", () => {
@@ -52,6 +52,8 @@ describe("screenRedFlags", () => {
     expect(result).not.toBeNull();
     expect(result!.action).toBe("SEE_DOCTOR_TODAY");
     expect(result!.redFlagKey).toBe("blood");
+    expect(result!.reportedBy).toBe("user");
+    expect(result!.reportedAt).toBe("2026-01-01");
   });
 
   it("returns EMERGENCY_995 when breathless reported", () => {
@@ -71,7 +73,7 @@ describe("screenRedFlags", () => {
     expect(result!.redFlagKey).toBe("breathless_or_chest_pain");
   });
 
-  it("returns null when red flags denied", () => {
+  it("returns null when red flags only denied (never reported)", () => {
     const obs: Observation[] = [
       {
         id: "o1",
@@ -85,7 +87,58 @@ describe("screenRedFlags", () => {
     expect(screenRedFlags(obs, policy)).toBeNull();
   });
 
-  it("uses most recent answer per key", () => {
+  it("STICKY: reported then later denied → still reported", () => {
+    const obs: Observation[] = [
+      {
+        id: "o1",
+        episodeId: "e1",
+        at: "2026-01-09",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "reported" },
+      },
+      {
+        id: "o2",
+        episodeId: "e1",
+        at: "2026-01-10",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "denied" },
+      },
+    ];
+    const result = screenRedFlags(obs, policy);
+    expect(result).not.toBeNull();
+    expect(result!.redFlagKey).toBe("blood");
+    expect(result!.reportedBy).toBe("user");
+    expect(result!.reportedAt).toBe("2026-01-09");
+  });
+
+  it("STICKY: reported by user, denied by support person → still reported", () => {
+    const obs: Observation[] = [
+      {
+        id: "o1",
+        episodeId: "e1",
+        at: "2026-01-09",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "reported" },
+      },
+      {
+        id: "o2",
+        episodeId: "e1",
+        at: "2026-01-10",
+        reporter: "support_person",
+        kind: "redflag_answer",
+        redFlags: { blood: "denied" },
+      },
+    ];
+    const result = screenRedFlags(obs, policy);
+    expect(result).not.toBeNull();
+    expect(result!.redFlagKey).toBe("blood");
+    expect(result!.reportedBy).toBe("user");
+  });
+
+  it("EMERGENCY_995 takes priority over SEE_DOCTOR_TODAY when both reported", () => {
     const obs: Observation[] = [
       {
         id: "o1",
@@ -93,7 +146,7 @@ describe("screenRedFlags", () => {
         at: "2026-01-01",
         reporter: "user",
         kind: "redflag_answer",
-        redFlags: { blood: "denied" },
+        redFlags: { blood: "reported" },
       },
       {
         id: "o2",
@@ -101,12 +154,11 @@ describe("screenRedFlags", () => {
         at: "2026-01-02",
         reporter: "user",
         kind: "redflag_answer",
-        redFlags: { blood: "reported" },
+        redFlags: { breathless_or_chest_pain: "reported" },
       },
     ];
     const result = screenRedFlags(obs, policy);
-    expect(result).not.toBeNull();
-    expect(result!.redFlagKey).toBe("blood");
+    expect(result!.action).toBe("EMERGENCY_995");
   });
 });
 
@@ -118,7 +170,7 @@ describe("hasUnscreenedRedFlags", () => {
     expect(hasUnscreenedRedFlags(obs, policy)).toBe(true);
   });
 
-  it("returns false when all red flags answered", () => {
+  it("returns false when all red flags answered (denied)", () => {
     const obs: Observation[] = [
       {
         id: "o1",
@@ -145,6 +197,28 @@ describe("hasUnscreenedRedFlags", () => {
     ];
     expect(hasUnscreenedRedFlags(obs, policy)).toBe(true);
   });
+
+  it("returns false for a red flag that was once reported (sticky)", () => {
+    const obs: Observation[] = [
+      {
+        id: "o1",
+        episodeId: "e1",
+        at: "2026-01-09",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "reported" },
+      },
+      {
+        id: "o2",
+        episodeId: "e1",
+        at: "2026-01-10",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "denied" },
+      },
+    ];
+    expect(hasUnscreenedRedFlags(obs, policy)).toBe(true); // breathless still unanswered
+  });
 });
 
 describe("evaluatePolicy", () => {
@@ -155,6 +229,7 @@ describe("evaluatePolicy", () => {
     const obs: Observation[] = [];
     const result = evaluatePolicy(baseEpisode, obs, policy, clock);
     expect(result.action).toBe("KEEP_WATCHING");
+    expect(result.followUps).toEqual([]);
   });
 
   it("fires not_better_after_self_treatment at day 15", () => {
@@ -168,6 +243,7 @@ describe("evaluatePolicy", () => {
     const result = evaluatePolicy(episode, obs, policy, clock);
     expect(result.action).toBe("SEE_GP");
     expect(result.ruleId).toBe("not_better_after_self_treatment");
+    expect(result.followUps).toEqual([]);
   });
 
   it("fires worsening when trajectory is worse", () => {
@@ -226,6 +302,32 @@ describe("evaluatePolicy", () => {
     const result = evaluatePolicy(episode, obs, policy, clock);
     expect(result.action).toBe("EMERGENCY_995");
   });
+
+  it("STICKY: red flag stays after later deny", () => {
+    clock.advanceToDay(10);
+    const episode: Episode = { ...baseEpisode, trajectory: "same" };
+    const obs: Observation[] = [
+      {
+        id: "o1",
+        episodeId: "e1",
+        at: "2026-01-09",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "reported" },
+      },
+      {
+        id: "o2",
+        episodeId: "e1",
+        at: "2026-01-10",
+        reporter: "user",
+        kind: "redflag_answer",
+        redFlags: { blood: "denied" },
+      },
+    ];
+    const result = evaluatePolicy(episode, obs, policy, clock);
+    expect(result.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result.redFlagKey).toBe("blood");
+  });
 });
 
 describe("loadPolicy / loadAllPolicies", () => {
@@ -247,5 +349,10 @@ describe("loadPolicy / loadAllPolicies", () => {
 
   it("throws on non-existent policy", () => {
     expect(() => loadPolicy("nonexistent" as any)).toThrow();
+  });
+
+  it("cough policy has no discordance rule", () => {
+    const policy = loadPolicy("cough");
+    expect(policy.rules.find((r) => r.id === "discordance")).toBeUndefined();
   });
 });

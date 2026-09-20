@@ -98,7 +98,9 @@ class SqliteStore implements Store {
   // ---- Episodes ----
 
   insertEpisode(episode: Episode): void {
-    const now = new Date().toISOString();
+    // Use lastActionAt (set by the engine via Clock) for timestamps.
+    // No Date.now() or new Date() — all time comes through the Episode/Clock.
+    const now = episode.lastActionAt ?? "1970-01-01T00:00:00.000Z";
     const stmt = this.db.prepare(`
       INSERT INTO episodes (id, person_id, symptom, onset_raw_text, onset_earliest,
         onset_latest, onset_confidence, state, trajectory, discordance, missed_checkins,
@@ -131,7 +133,9 @@ class SqliteStore implements Store {
   }
 
   updateEpisode(episode: Episode): void {
-    const now = new Date().toISOString();
+    // Use lastActionAt (set by the engine via Clock) for updated_at.
+    // No Date.now() or new Date().
+    const now = episode.lastActionAt ?? "1970-01-01T00:00:00.000Z";
     const stmt = this.db.prepare(`
       UPDATE episodes SET
         state = @state,

@@ -1,0 +1,23 @@
+{
+  "name": "red_flag_sticky_after_deny",
+  "description": "Red flag (blood) reported on day 9, then user denies it on day 10. Red flag stays reported (sticky); action stays SEE_DOCTOR_TODAY.",
+  "symptom": "cough",
+  "mode": "independent",
+  "onset": {
+    "rawText": "started coughing",
+    "latestPossible": "2026-01-01T08:00:00.000Z",
+    "confidence": "exact"
+  },
+  "events": [
+    { "day": 0, "kind": "mention", "trajectory": "same", "rawText": "I have a cough" },
+    { "day": 5, "kind": "checkin", "trajectory": "same", "rawText": "still coughing" },
+    { "day": 9, "kind": "redflag_answer", "redFlags": { "blood": "reported", "breathless_or_chest_pain": "denied" }, "rawText": "I saw blood" },
+    { "day": 10, "kind": "redflag_answer", "redFlags": { "blood": "denied" }, "rawText": "actually no blood" }
+  ],
+  "expectations": [
+    { "day": 0, "action": "KEEP_WATCHING" },
+    { "day": 5, "action": "KEEP_WATCHING" },
+    { "day": 9, "action": "SEE_DOCTOR_TODAY", "redFlagKey": "blood" },
+    { "day": 10, "action": "SEE_DOCTOR_TODAY", "redFlagKey": "blood" }
+  ]
+}

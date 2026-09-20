@@ -15,13 +15,6 @@
   ],
   "rules": [
     {
-      "id": "discordance",
-      "when": { "discordance": true, "trajectoryIn": ["same", "worse", "intermittent"] },
-      "action": "SEE_GP",
-      "explain": "There is a disagreement about how the cough is progressing. For safety, consider seeing a GP.",
-      "sourceIndex": 0
-    },
-    {
       "id": "not_better_after_self_treatment",
       "when": {
         "minDurationDays": 14,

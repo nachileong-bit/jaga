@@ -15,6 +15,7 @@ import type {
   Episode,
   Observation,
   Person,
+  PolicyResult,
   Timeline,
   TimelineEvent,
 } from "../../src/core/types.js";
@@ -109,6 +110,9 @@ async function runTimeline(timeline: Timeline): Promise<TimelineTestResult> {
   // Process events in order, checking expectations at the right days
   let eventIndex = 0;
 
+  // Track the last engine result (has followUps added by the engine)
+  let lastEngineResult: { result: PolicyResult; episode: Episode } | null = null;
+
   // Process events day by day
   const maxDay = Math.max(
     ...sortedEvents.map((e) => e.day ?? 0),
@@ -135,7 +139,7 @@ async function runTimeline(timeline: Timeline): Promise<TimelineTestResult> {
         rawText: event.rawText,
       };
 
-      await processObservation(store, currentEpisode, obs, clock);
+      lastEngineResult = await processObservation(store, currentEpisode, obs, clock);
       eventIndex++;
     }
 
@@ -148,10 +152,20 @@ async function runTimeline(timeline: Timeline): Promise<TimelineTestResult> {
       const { evaluatePolicy } = await import("../../src/core/policyEvaluator.js");
       const evalResult = evaluatePolicy(currentEpisode, observations, policy, clock);
 
+      // If there was an engine result on this day (events were processed),
+      // use its followUps (the engine adds ASK_CLARIFICATION for discordance).
+      // Otherwise, use the evaluator's followUps (empty from evaluatePolicy).
+      const followUps =
+        lastEngineResult && sortedEvents.some((e) => (e.day ?? 0) === day)
+          ? lastEngineResult.result.followUps
+          : evalResult.followUps;
+
       const passed =
         evalResult.action === expectation.action &&
         (expectation.ruleId === undefined || evalResult.ruleId === expectation.ruleId) &&
-        (expectation.redFlagKey === undefined || evalResult.redFlagKey === expectation.redFlagKey);
+        (expectation.redFlagKey === undefined || evalResult.redFlagKey === expectation.redFlagKey) &&
+        (expectation.followUpsContains === undefined ||
+          expectation.followUpsContains.every((fu) => followUps.includes(fu)));
 
       result.results.push({
         day,
