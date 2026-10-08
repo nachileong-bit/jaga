@@ -15,12 +15,18 @@ Hackathon: Tencent Cloud x AI Singapore 2026, Healthcare track, Challenge 1
 
 Knowledge base: https://jaga-production-dc96.up.railway.app/web/knowledge.html
 
+Demo video: https://jaga-production-dc96.up.railway.app/web/video.html
+
+<img src="web/brand/jaga.png" alt="Jaga, a red panda in a white singlet, green shorts and blue slippers" width="220">
+
+Jaga's mascot is a red panda dressed like the uncle at the kopitiam. It sends WhatsApp stickers at friendly moments. Warning-sign messages stay plain.
+
 Built with Tencent CodeBuddy alongside other AI coding assistants (multiple LLMs).
 
 ## Status
 
 Working prototype: core rule engine, web demo, care navigation, GP summary,
-WhatsApp bridge and a sourced knowledge base. All medical rules and answers are
+WhatsApp bridge, a sourced knowledge base and mascot stickers. All medical rules and answers are
 marked PENDING_CLINICIAN_REVIEW.
 
 ## Knowledge base
