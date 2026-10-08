@@ -17,8 +17,8 @@ export interface ClinicCard {
 }
 
 const LABEL = "PROTOTYPE DATA · SIMULATED";
-const CONSULT = "Estimated consultation: $XX before subsidy";
-const OOP = "Estimated out-of-pocket: $XX with applicable subsidy";
+const CONSULT = "Consultation fee shown at the clinic";
+const OOP = "CHAS or Healthier SG subsidies may apply";
 
 export const CLINICS: ClinicCard[] = [
   {

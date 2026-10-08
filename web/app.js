@@ -341,7 +341,8 @@ function renderQuickArea(transcript) {
       btn.onclick = () => sendMessage(chip.text, null);
       quickButtons.appendChild(btn);
     }
-  } else {
+  } else if (lastState && lastState.clockPanel && lastState.clockPanel.symptom) {
+    // "I took medicine" and "Noticed blood" only make sense once a cough is being tracked.
     const b1 = document.createElement("button");
     b1.className = "quick-btn";
     b1.textContent = "I took medicine"; // Item 10: new wording
@@ -385,7 +386,7 @@ function renderClockPanel(panel) {
       .map((rf) => {
         let detail = "";
         if (rf.status === "reported" && rf.reportedBy) {
-          detail = `reported by ${rf.reporter === "support_person" ? "support person" : "user"}${rf.reportedAt ? ` on day ${dayOf(rf.reportedAt)}` : ""}`;
+          detail = `reported by ${rf.reportedBy === "support_person" ? "Mei Ling (trusted person)" : "the user"}${rf.reportedAt ? ` on day ${dayOf(rf.reportedAt)}` : ""}`;
         } else if (rf.status === "denied") {
           detail = "denied";
         } else {
@@ -470,7 +471,7 @@ function tickTourStep(step) {
   const btn = tourButtons.querySelector(`[data-tour="${step}"]`);
   if (btn) {
     btn.classList.add("tour-done");
-    btn.textContent = btn.textContent + " ✓";
+    if (!btn.textContent.endsWith(" ✓")) btn.textContent = btn.textContent + " ✓";
   }
   const pill = document.querySelector(`.tour-pill[data-tour="${step}"]`);
   if (pill) {
@@ -505,50 +506,50 @@ async function runTourStep(step) {
   showTourTyping();
 
   try {
-    if (step === 1) {
+    // Every step sets up what it needs, so the steps work in any order.
+    const lastJagaWithButton = (label) => {
+      const t = (lastState && lastState.transcript) || [];
+      for (let k = t.length - 1; k >= 0; k--) {
+        if (t[k].role === "user" || t[k].role === "support_person") return false;
+        if (t[k].buttons && t[k].buttons.includes(label)) return true;
+      }
+      return false;
+    };
+    const startMrTan = () => runSteps([
+      () => { scenarioSelect.value = "mr_tan"; return reset("mr_tan"); },
+      () => sendMessage(null, "Add a trusted person"),
+    ]);
+    const reachNudge = async () => {
+      await startMrTan();
       await runSteps([
-        () => { scenarioSelect.value = "mr_tan"; return reset("mr_tan"); },
-        () => sendMessage(null, "Add a trusted person"),
-      ]);
-    } else if (step === 2) {
-      // Intake only if the clock has not started yet, then one check-in reaches day 14 of the cough.
-      const st = getSessionState();
-      const started = st && st.clockPanel && st.clockPanel.symptom;
-      const steps = started ? [] : [
         () => sendMessage("cough", null),
         () => sendMessage(null, "About a week ago"),
         () => sendMessage(null, "No"),
         () => sendMessage(null, "No"),
-      ];
-      steps.push(
         () => sendMessage(null, "I took medicine"),
         () => sendMessage(null, "Correct"),
-        () => advance((st && st.day ? st.day : 0) + 7),
+        () => advance(7),
         () => sendMessage(null, "Still got"),
         () => sendMessage(null, "No"), // "Since we last spoke, any blood, breathlessness or chest pain?"
-      );
-      await runSteps(steps);
+      ]);
+    };
+    if (step === 1) {
+      await startMrTan();
+    } else if (step === 2) {
+      await reachNudge();
     } else if (step === 3) {
-      await runSteps([
-        () => sendMessage(null, "Book appointment"),
-      ]);
-      // Open newest GP summary link in a new tab
-      setTimeout(() => {
-        const link = document.querySelector('.msg-link[href*="summary.html"]');
-        if (link) {
-          window.open(link.href, "_blank");
-        }
-      }, 500);
+      if (!lastJagaWithButton("Book appointment")) await reachNudge();
+      await runSteps([() => sendMessage(null, "Book appointment")]);
+      const links = document.querySelectorAll('.msg-link[href*="summary.html"]');
+      const link = links[links.length - 1];
+      if (link) showSummaryPanel(link.href);
     } else if (step === 4) {
-      await runSteps([
-        () => sendMessage("Which cough medicine should I take?", null),
-      ]);
+      const started = lastState && lastState.clockPanel && lastState.clockPanel.symptom;
+      if (!started) await reachNudge();
+      await runSteps([() => sendMessage("Which cough medicine should I take?", null)]);
     } else if (step === 5) {
-      await runSteps([
-        () => { scenarioSelect.value = "mr_tan"; return reset("mr_tan"); },
-        () => sendMessage(null, "Add a trusted person"),
-        () => sendMessage("I have a fever", null),
-      ]);
+      await startMrTan();
+      await runSteps([() => sendMessage("I have a fever", null)]);
     } else if (step === 6) {
       await runSteps([
         () => { scenarioSelect.value = "ms_lim"; return reset("ms_lim"); },
@@ -664,3 +665,22 @@ meiLingToggle.addEventListener("change", (e) => {
 // ---- Initialize ----
 
 reset("mr_tan");
+
+
+// GP summary shown in a panel over the demo, so the tour never leaves the page
+// (and phones do not block it as a pop-up).
+function showSummaryPanel(href) {
+  document.getElementById("summary-panel")?.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "summary-panel";
+  wrap.className = "summary-panel";
+  wrap.innerHTML = '<div class="summary-panel-bar"><strong>GP summary</strong>' +
+    '<span><a target="_blank" rel="noopener">Open in new tab</a>' +
+    '<button type="button" aria-label="Close">Close</button></span></div>' +
+    '<iframe title="GP summary"></iframe>';
+  wrap.querySelector("a").href = href;
+  wrap.querySelector("iframe").src = href;
+  wrap.querySelector("button").onclick = () => wrap.remove();
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.remove(); });
+  document.body.appendChild(wrap);
+}

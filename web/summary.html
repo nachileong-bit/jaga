@@ -34,6 +34,7 @@ button{font:inherit;padding:8px 16px;border-radius:8px;border:1px solid #0f6b57;
 </head>
 <body>
 <div class="actions"><a href="/web/" class="back-link">&larr; Back to the demo</a><button onclick="window.print()">Print or save as PDF</button></div>
+<script>if (window.self !== window.top) document.querySelector(".back-link").style.display = "none";</script>
 <div class="page" id="page"><p>Loading...</p></div>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

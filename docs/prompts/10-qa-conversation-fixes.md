@@ -1,0 +1,25 @@
+# Prompt 10: conversation fixes from end-to-end QA of the live demo
+
+You are working in the Jaga repo. Read src/conversation/flow.ts, src/conversation/symptomScope.ts, src/llm/ScriptedExtractor.ts, src/copy/en.ts, src/knowledge/kb.ts, src/navigation/summary.ts, src/navigation/prototypeData.ts first. Only change files under src/ and tests/. Do NOT touch web/ (another person is changing it at the same time). No em dashes in copy. Keep policies PENDING_CLINICIAN_REVIEW and do not change thresholds.
+
+## Blockers
+1. Warning-sign answers are parsed too loosely. At "Have you noticed any blood when you cough?" the reply "do I have cancer?" was counted as YES because it contains "have", sent the person to the emergency department and alerted Mei Ling. In onRedFlagAnswer:
+   - A question (isQuestion) or a diagnosis question is never an answer. Answer it the normal way (KB_NO_DIAGNOSIS, knowledge base, or NOT_COVERED_YET), then ask the same warning-sign question again.
+   - Yes only if the reply starts with or is: yes, yeah, yup, ya, yah, y, got, have (as the first word), or it is a free-text warning-sign report from the extractor. No only for: no, nope, nah, n, none, never, "no lah", "don't have", "dont have", "no got", "nothing". Anything else is unclear: ask once more with Yes / No; if still unclear, record "unknown" (never "denied") and move on.
+2. The onset step accepts anything. "do I have cancer?" was stored as the onset ("Noted: do I have cancer?. That is at least 0 days").
+   - Questions at the onset step are answered as above and the onset question is asked again.
+   - If extractOnset cannot read a time, re-ask once with the buttons; if still unreadable, record onset unknown with the person's words but never claim "at least 0 days". Say "I'll start counting from today."
+   - extractOnset must also read: "last month", "since last month", "since CNY" / "since Chinese New Year" (CNY 2026 was 17 Feb 2026), "last week", "yesterday", "this morning", "few weeks", "a month", "2 months", "since September" style month names (count from the 1st of that month, approximate). Use the simulated clock date. Add tests.
+
+## Major
+3. A warning sign in the very first message must escalate at once, even when the onset is still unknown: "no lah, got blood in phlegm" at the symptom step gives the blood emergency message (and still creates the cough episode). Same for "cough with chest pain".
+4. Emergency words: add "heart attack", "stroke", "collapsed", "unconscious", "can't wake", "fit", "seizure" to isEmergencyMention, and run that check on every message (before any episode and during monitoring), not only at the symptom step. "a bit breathless when climb stairs" must NOT count as an emergency anywhere (it is the see-a-doctor-today sign) so the symptom step and mid-chat agree.
+5. Trusted person attribution: when the support person reports a warning sign, the share text and any message must say "<support name> told Jaga", not "<person> told Jaga". Check SUPPORT_URGENT_TEXT and every message built from a report. When the action is EMERGENCY_995, the alert to the trusted person must say it is urgent and mention 995 / emergency department, not "checked by a doctor today".
+6. Missed check-ins: weeks before the clock started must never count as missed. "cough 3 weeks" at day 0 must show 0 missed check-ins.
+7. Appointment reminder and check-ins: the reminder must use the booked appointment day (booking on day 14 for "tomorrow" means the reminder on day 15, not day 21). While an appointment is booked and not yet followed up, skip the routine "Still coughing?" check-in; ask "Did you manage to see the doctor?" only, the day after the appointment.
+8. Questions at the symptom step ("what can I take for cough ah", "can my blood pressure medicine cause cough?") must get the knowledge base answer and then the symptom question again, instead of being taken as the symptom. Unless the message also clearly describes the person's own cough ("I have a cough, what can I take?"): then start the cough flow and answer the question after the warning-sign questions.
+9. Clinic card prices: replace "$XX" placeholders. consult: "Consultation fee shown at the clinic"; outOfPocket: "CHAS or Healthier SG subsidies may apply". Keep simulated: true and the PROTOTYPE DATA label.
+10. GP summary: never show code names. Map warning-sign keys and rule ids to plain words, e.g. blood: "Blood when coughing", breathless_or_chest_pain: "Breathless at rest or chest pain", breathless_effort: "Breathless on effort", high_fever: "Fever above 38.6°C", weight_loss: "Weight loss", night_sweats: "Night sweats", coloured_phlegm: "Yellow or green phlegm", wheezing: "Wheezing", not_better_after_self_treatment: "Not better after 2 weeks of self-treatment", three_weeks_any: "Cough for more than 3 weeks", worsening: "Getting worse", long_duration: "Cough for more than 8 weeks". Unasked signs show "Not asked" and are listed after the asked ones.
+
+## Tests
+11. One or more vitest tests per item, including the exact QA repro steps. Run `npm test` and `npm run timelines`. All must pass. Do not commit.

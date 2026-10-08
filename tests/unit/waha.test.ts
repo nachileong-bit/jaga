@@ -94,7 +94,8 @@ describe("WhatsApp conversation", () => {
 
     const card = sender.last(ME);
     expect(card).toContain("[PROTOTYPE DATA · SIMULATED]");
-    expect(card).toContain("$XX");
+    expect(card).toContain("Consultation fee shown at the clinic");
+    expect(card).toContain("CHAS or Healthier SG subsidies may apply");
     expect(card).toContain("5. Ask Mei Ling to help");
 
     await send("1"); // Book appointment

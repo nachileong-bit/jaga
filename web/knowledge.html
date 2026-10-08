@@ -96,10 +96,18 @@ function srcLink(s) { return `<a href="${esc(s.url)}" target="_blank" rel="noope
 function renderEntries() {
   const q = document.getElementById("q").value.toLowerCase().trim();
   const kb = data.knowledge;
-  const list = kb.entries.filter(e =>
-    (topic === "all" || e.topic === topic) &&
-    (!q || (e.title + " " + e.answer + " " + e.keywords.join(" ")).toLowerCase().split(/\s+/).some(w => q.split(/\s+/).includes(w)))
-  );
+  const STOP = new Set(["the","and","for","can","what","when","where","which","should","how","does","with","have","has","you","your","about","this","that","are","see","get","any","from","into","will","lah","leh","lor","meh","hor"]);
+  const words = q.replace(/[^a-z0-9&\s]/g, " ").split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
+  let list = kb.entries.filter(e => topic === "all" || e.topic === topic);
+  if (words.length) {
+    const scored = list.map(e => {
+      const hay = (e.title + " " + e.answer + " " + e.keywords.join(" ")).toLowerCase();
+      const score = words.filter(w => new RegExp("\\b" + w).test(hay)).length + words.filter(w => e.title.toLowerCase().includes(w)).length;
+      return { e, score };
+    }).filter(x => x.score > 0).sort((x, y) => y.score - x.score);
+    const top = scored.length ? scored[0].score : 0;
+    list = scored.filter(x => x.score >= Math.max(1, top - 1)).slice(0, 5).map(x => x.e);
+  }
   document.getElementById("entries").innerHTML = list.length ? list.map(e => {
     const s = kb.sources[e.source];
     return `<div class="entry"><span class="tag">${TOPIC[e.topic]}</span><h3>${esc(e.title)}</h3><p>${esc(e.answer)}</p>

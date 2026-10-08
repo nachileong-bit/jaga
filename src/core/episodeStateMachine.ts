@@ -163,8 +163,9 @@ export function computeMissedCheckins(
     .filter((o) => o.kind === "checkin")
     .reverse()[0];
 
-  // If no check-in ever happened, base it on episode creation / lastActionAt
-  const reference = lastCheckin?.at ?? episode.lastCheckinAt ?? episode.onset.latestPossible;
+  // If no check-in ever happened, base it on episode creation (lastActionAt),
+  // not the onset. Weeks before the clock started must never count as missed.
+  const reference = lastCheckin?.at ?? episode.lastCheckinAt ?? episode.lastActionAt ?? clock.now();
   const daysSince = Math.floor(
     (clock.nowMs() - new Date(reference).getTime()) / 86_400_000
   );

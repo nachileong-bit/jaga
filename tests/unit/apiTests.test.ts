@@ -334,8 +334,9 @@ describe("B1 and B7 copy safety", () => {
     for (const c of CLINICS) {
       expect(c.simulated).toBe(true);
       expect(c.label).toContain("PROTOTYPE DATA");
-      expect(c.consult).toContain("$XX");
-      expect(c.outOfPocket).toContain("$XX");
+      // No $ placeholder and no dollar amounts: prices are plain text only.
+      expect(c.consult).not.toContain("$");
+      expect(c.outOfPocket).not.toContain("$");
       expect(/\$\s?\d/.test(c.consult + c.outOfPocket)).toBe(false);
     }
   });

@@ -34,7 +34,13 @@ export const MODE_NO_SUPPORT_IN_SCENARIO =
 export const ASK_SYMPTOM = "Tell me about your cough, in your own words. For example: \"cough 3 weeks, got phlegm\". Other symptoms aren't covered yet.";
 
 export const SYMPTOM_ACKNOWLEDGED = (rawText: string, minDays: number) =>
-  `Noted: "${rawText}". That is at least ${minDays} day${minDays === 1 ? "" : "s"}. I'll count from there.`;
+  minDays > 0
+    ? `Noted: "${rawText}". That is at least ${minDays} day${minDays === 1 ? "" : "s"}. I'll count from there.`
+    : `Noted: "${rawText}". I'll start counting from today.`;
+
+/** Onset could not be read. Never claim "at least 0 days". */
+export const ONSET_UNKNOWN_ACK = (rawText: string) =>
+  `Noted: "${rawText}". I couldn't read how long it has been. I'll start counting from today.`;
 
 export const ASK_ONSET = "Roughly when did it start?";
 
@@ -134,8 +140,12 @@ export const RED_FLAG_DENY_REPLY = (key: string) => {
 
 export const RED_FLAG_REMINDER = "My earlier advice still stands. Please get this checked as I said before.";
 
-export const SUPPORT_URGENT_TEXT = (userName: string) =>
-  `${userName} told Jaga about a warning sign that should be checked by a doctor today. Please check in with them.`;
+export const SUPPORT_URGENT_TEXT = (reporterName: string, action: ActionType) => {
+  if (action === "EMERGENCY_995") {
+    return `${reporterName} told Jaga about a warning sign that needs urgent care. Please call 995 or go to the nearest emergency department now.`;
+  }
+  return `${reporterName} told Jaga about a warning sign that should be checked by a doctor today. Please check in with them.`;
+};
 
 export const SENT_TO_SUPPORT = (supportName: string, text: string, urgent = false) =>
   `Sent to ${supportName}${urgent ? " (urgent signs, as you agreed)" : ""}: "${text}"`;

@@ -35,13 +35,43 @@ export interface OnsetMatch {
   confidence: "approximate";
 }
 
-export function extractOnset(text: string): OnsetMatch | null {
-  // "before CNY" / "before Chinese New Year": CNY 2026 is 17 Feb, so the latest
-  // possible onset is 16 Feb. rawText is always the user's OWN words (spec rule 3).
-  const cnyMatch = text.match(/(since\s+)?before\s+(cny|chinese new year)/i);
-  if (cnyMatch) {
+// Default base date = the Jaga demo clock start (day 0).
+const DEFAULT_BASE = "2026-02-20T08:00:00.000Z";
+
+// Month names for "since September" style parsing. Count from the 1st of
+// that month, approximate.
+const MONTH_NAMES: Record<string, number> = {
+  january: 0, jan: 0,
+  february: 1, feb: 1,
+  march: 2, mar: 2,
+  april: 3, apr: 3,
+  may: 4,
+  june: 5, jun: 5,
+  july: 6, jul: 6,
+  august: 7, aug: 7,
+  september: 8, sep: 8, sept: 8,
+  october: 9, oct: 9,
+  november: 10, nov: 10,
+  december: 11, dec: 11,
+};
+
+export function extractOnset(text: string, nowIso?: string): OnsetMatch | null {
+  const base = nowIso ?? DEFAULT_BASE;
+
+  // "before CNY" / "since before CNY" / "since CNY" / "since Chinese New Year"
+  // CNY 2026 was 17 Feb. "before CNY" -> latest = 16 Feb. "since CNY" -> 17 Feb.
+  const cnySinceMatch = text.match(/\bsince\s+(cny|chinese new year)\b/i);
+  if (cnySinceMatch) {
     return {
-      rawText: cnyMatch[0].trim(),
+      rawText: cnySinceMatch[0].trim(),
+      latestPossible: "2026-02-17T08:00:00.000Z",
+      confidence: "approximate",
+    };
+  }
+  const cnyBeforeMatch = text.match(/(since\s+)?before\s+(cny|chinese new year)/i);
+  if (cnyBeforeMatch) {
+    return {
+      rawText: cnyBeforeMatch[0].trim(),
       latestPossible: "2026-02-16T08:00:00.000Z",
       confidence: "approximate",
     };
@@ -49,13 +79,32 @@ export function extractOnset(text: string): OnsetMatch | null {
 
   const lower = text.toLowerCase();
 
+  // "since <MonthName>" e.g. "since September" -> 1st of that month
+  const sinceMonthMatch = lower.match(/\bsince\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b/);
+  if (sinceMonthMatch) {
+    const monthName = sinceMonthMatch[1];
+    const monthIdx = MONTH_NAMES[monthName];
+    const baseDate = new Date(base);
+    const year = baseDate.getUTCFullYear();
+    const target = new Date(Date.UTC(year, monthIdx, 1, 8, 0, 0));
+    // If the 1st of that month is after the base date, it must be last year.
+    if (target.getTime() > baseDate.getTime()) {
+      target.setUTCFullYear(year - 1);
+    }
+    return {
+      rawText: sinceMonthMatch[0].trim(),
+      latestPossible: target.toISOString(),
+      confidence: "approximate",
+    };
+  }
+
   // "3 weeks" / "2 weeks" / "three weeks"
   let m = lower.match(/\b(\d+)\s+weeks?\b/);
   if (m) {
     const weeks = parseInt(m[1], 10);
     return {
       rawText: m[0],
-      latestPossible: isoDaysAgoFromBase(weeks * 7, "2026-02-20T08:00:00.000Z"),
+      latestPossible: isoDaysAgoFromBase(weeks * 7, base),
       confidence: "approximate",
     };
   }
@@ -63,36 +112,63 @@ export function extractOnset(text: string): OnsetMatch | null {
   if (m) {
     return {
       rawText: m[0],
-      latestPossible: isoDaysAgoFromBase(21, "2026-02-20T08:00:00.000Z"),
+      latestPossible: isoDaysAgoFromBase(21, base),
       confidence: "approximate",
     };
   }
 
-  // "since last week" / "a week ago" / "about a week ago"
-  if (/\b(since\s+last\s+week|about\s+a\s+week\s+ago|a\s+week\s+ago)\b/.test(lower)) {
+  // "few weeks" -> approximate 2-3 weeks, use 14 days as a conservative min
+  if (/\bfew\s+weeks?\b/.test(lower)) {
     return {
-      rawText: matchPhrase(lower, ["about a week ago", "since last week", "a week ago"]),
-      latestPossible: isoDaysAgoFromBase(7, "2026-02-20T08:00:00.000Z"),
+      rawText: matchPhrase(lower, ["few weeks", "a few weeks"]),
+      latestPossible: isoDaysAgoFromBase(14, base),
       confidence: "approximate",
     };
   }
 
-  // "1 month" / "since last month" / "a month ago"
-  if (/\b(\d+\s+months?|since\s+last\s+month|a\s+month\s+ago)\b/.test(lower)) {
+  // "since last week" / "last week" / "a week ago" / "about a week ago"
+  if (/\b(since\s+last\s+week|last\s+week|about\s+a\s+week\s+ago|a\s+week\s+ago)\b/.test(lower)) {
+    return {
+      rawText: matchPhrase(lower, ["about a week ago", "since last week", "last week", "a week ago"]),
+      latestPossible: isoDaysAgoFromBase(7, base),
+      confidence: "approximate",
+    };
+  }
+
+  // "yesterday" -> 1 day ago
+  if (/\byesterday\b/.test(lower)) {
+    return {
+      rawText: "yesterday",
+      latestPossible: isoDaysAgoFromBase(1, base),
+      confidence: "approximate",
+    };
+  }
+
+  // "this morning" -> 0 days (today)
+  if (/\bthis\s+morning\b/.test(lower)) {
+    return {
+      rawText: "this morning",
+      latestPossible: base,
+      confidence: "approximate",
+    };
+  }
+
+  // "1 month" / "since last month" / "a month" / "a month ago" / "last month"
+  if (/\b(\d+\s+months?|since\s+last\s+month|a\s+month\b|a\s+month\s+ago|last\s+month)\b/.test(lower)) {
     const mm = lower.match(/\b(\d+)\s+months?\b/);
     const months = mm ? parseInt(mm[1], 10) : 1;
     return {
-      rawText: mm ? mm[0] : matchPhrase(lower, ["since last month", "a month ago"]),
-      latestPossible: isoDaysAgoFromBase(months * 30, "2026-02-20T08:00:00.000Z"),
+      rawText: mm ? mm[0] : matchPhrase(lower, ["since last month", "last month", "a month ago", "a month"]),
+      latestPossible: isoDaysAgoFromBase(months * 30, base),
       confidence: "approximate",
     };
   }
 
-  // "a few days" / "since a few days"
+  // "a few days" / "since a few days" / "few days"
   if (/\b(a\s+few\s+days|few\s+days)\b/.test(lower)) {
     return {
       rawText: matchPhrase(lower, ["a few days", "few days"]),
-      latestPossible: isoDaysAgoFromBase(2, "2026-02-20T08:00:00.000Z"),
+      latestPossible: isoDaysAgoFromBase(2, base),
       confidence: "approximate",
     };
   }
@@ -130,7 +206,7 @@ const BREATHLESS_REPORT =
 // "not short of breath"). If there is a "but"/"however"/"though" that introduces
 // the symptom, it is still a report.
 const BREATHLESS_DENIAL_WITH_OVERRIDE =
-  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)\b[^.?!]{0,10}\b(but|however|though|just)\b/i;
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)\b[^.?!]{0,10}\b(but|however|though)\b/i;
 const BREATHLESS_DENIAL =
   /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)/i;
 

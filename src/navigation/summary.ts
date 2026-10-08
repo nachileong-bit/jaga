@@ -47,7 +47,21 @@ const MS_PER_DAY = 86_400_000;
 
 const RED_FLAG_LABELS: Record<string, string> = {
   blood: "Blood when coughing",
-  breathless_or_chest_pain: "Breathlessness or chest pain",
+  breathless_or_chest_pain: "Breathless at rest or chest pain",
+  breathless_effort: "Breathless on effort",
+  high_fever: "Fever above 38.6\u00b0C",
+  weight_loss: "Weight loss",
+  night_sweats: "Night sweats",
+  coloured_phlegm: "Yellow or green phlegm",
+  wheezing: "Wheezing",
+  fever_or_rash: "Fever or rash",
+};
+
+const RULE_LABELS: Record<string, string> = {
+  not_better_after_self_treatment: "Not better after 2 weeks of self-treatment",
+  worsening: "Getting worse",
+  long_duration: "Cough for more than 8 weeks",
+  three_weeks_any: "Cough for more than 3 weeks",
 };
 
 export function buildSummary(input: SummaryInput): GpSummary {
@@ -75,17 +89,23 @@ export function buildSummary(input: SummaryInput): GpSummary {
 
   const reported = getReportedRedFlags(observations);
   const latest = getLatestRedFlagAnswers(observations);
-  const redFlags = policy.redFlags.map((rf) => {
+  const redFlagsAll = policy.redFlags.map((rf) => {
     const label = RED_FLAG_LABELS[rf.key] ?? rf.key;
     const report = reported.get(rf.key);
     if (report) {
       const by = report.reporter === "support_person" ? "support person" : input.displayName;
       const laterDenied = latest[rf.key] === "denied" ? " Later denied. The earlier report is kept." : "";
-      return { key: label, status: "REPORTED", detail: `Reported by ${by} on day ${dayOf(report.at)}.${laterDenied}` };
+      return { key: label, status: "REPORTED", detail: `Reported by ${by} on day ${dayOf(report.at)}.${laterDenied}`, asked: true };
     }
-    if (latest[rf.key] === "denied") return { key: label, status: "Denied", detail: "Asked and denied." };
-    return { key: label, status: "Not known", detail: "Not asked or not answered." };
+    if (latest[rf.key] === "denied") return { key: label, status: "Denied", detail: "Asked and denied.", asked: true };
+    if (latest[rf.key] === "unknown") return { key: label, status: "Unclear", detail: "Asked but unclear answer.", asked: true };
+    return { key: label, status: "Not asked", detail: "Not asked or not answered.", asked: false };
   });
+  // Asked signs first, then unasked ones.
+  const redFlags = [
+    ...redFlagsAll.filter((r) => r.asked),
+    ...redFlagsAll.filter((r) => !r.asked),
+  ].map(({ key, status, detail }) => ({ key, status, detail }));
 
   const unsure: string[] = [];
   if (episode.onset.confidence !== "exact") {
@@ -121,7 +141,11 @@ export function buildSummary(input: SummaryInput): GpSummary {
       : null,
     ruleFired: lastResult
       ? {
-          ruleId: lastResult.ruleId ?? (lastResult.redFlagKey ? `red flag: ${lastResult.redFlagKey}` : null),
+          ruleId: lastResult.ruleId
+            ? (RULE_LABELS[lastResult.ruleId] ?? lastResult.ruleId)
+            : lastResult.redFlagKey
+              ? (RED_FLAG_LABELS[lastResult.redFlagKey] ?? lastResult.redFlagKey)
+              : null,
           action: lastResult.action,
           explain: lastResult.explain ?? null,
           policy: `${policy.id} v${policy.version}`,

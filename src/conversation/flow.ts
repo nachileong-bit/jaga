@@ -26,7 +26,7 @@ import * as copy from "../copy/en.js";
 import { CLINICS, type ClinicCard } from "../navigation/prototypeData.js";
 import { buildSummary, type GpSummary } from "../navigation/summary.js";
 import { isQuestion, isDiagnosisQuestion, searchKnowledge } from "../knowledge/kb.js";
-import { isCoughMention, isEmergencyMention, isFeverWithoutNumber, isNonCoughSymptom } from "./symptomScope.js";
+import { isCoughMention, isEmergencyMention, isFeverWithoutNumber, isNonCoughSymptom, isOwnCoughReport } from "./symptomScope.js";
 import type {
   ClockPanelState,
   DemoState,
@@ -90,6 +90,9 @@ export class DemoSession {
 
   // onset
   private pendingOnsetRawText: string | null = null;
+  private onsetReasked = false;
+  // question asked alongside the first cough report; answered after red-flags
+  private pendingQuestionText: string | null = null;
   // red-flag screening at the start
   private redFlagQueue: string[] = [];
   private currentRedFlagKey: string | null = null;
@@ -226,6 +229,18 @@ export class DemoSession {
       }
     }
 
+    // Prompt 06: emergency signs are always caught, before any episode and
+    // during monitoring. Run on every message (after the red-flag screen so
+    // that blood / breathless reports are recorded properly first).
+    // At the symptom step with a cough mention, let onSymptom handle it so
+    // the episode is created and the red flag is recorded (e.g. "cough with
+    // chest pain" should create the episode AND escalate).
+    if (params.text && isEmergencyMention(params.text) && !(this.pending === "symptom" && isCoughMention(params.text))) {
+      this.say(copy.EMERGENCY_NOW);
+      this.runTodo();
+      return this.getState();
+    }
+
     // After the clock has started: fever without a number gets the KB answer;
     // a non-cough symptom gets NOT_COVERED_YET. Never reply "Noted." to those.
     if (this.episode && this.monitoringStartDay !== null && params.text) {
@@ -260,16 +275,28 @@ export class DemoSession {
       return this.getState();
     }
 
-    // Prompt 06: emergency signs are always caught first, even before an episode.
-    if (!this.episode && params.text && isEmergencyMention(params.text)) {
-      this.say(copy.EMERGENCY_NOW);
-      this.runTodo();
-      return this.getState();
-    }
-
     await this.route(params);
     this.runTodo();
     return this.getState();
+  }
+
+  /** Answers a question asked during the red-flag step (no NO_QA_STEPS guard). */
+  private answerRedFlagQuestion(text: string): void {
+    if (isDiagnosisQuestion(text)) {
+      this.say(copy.KB_NO_DIAGNOSIS);
+      return;
+    }
+    const hit = searchKnowledge(text, this.scenario.symptom);
+    if (!hit) {
+      this.say(copy.KB_NO_ANSWER);
+      return;
+    }
+    const footer = hit.entry.topic === "care" ? "" : ` ${copy.KB_FOOTER}`;
+    this.say(`${hit.entry.answer}${footer}`, undefined, {
+      sourceLabel: hit.source.label,
+      sourceUrl: hit.source.url,
+    });
+    if (hit.entry.id === "cough_prevent") this.sticker("09-mask.png");
   }
 
   /** Steps where a typed reply is an answer to Jaga, not a question for Jaga. */
@@ -371,6 +398,39 @@ export class DemoSession {
     const text = (params.text ?? params.button ?? "").trim();
     if (!text) return;
 
+    // Questions at the symptom step: answer from the KB, then ask the symptom
+    // question again. Unless the message also clearly describes the person's
+    // own cough ("I have a cough, what can I take?"): then start the cough flow
+    // and answer the question after the warning-sign questions.
+    if (text && (isQuestion(text) || isDiagnosisQuestion(text))) {
+      const ownCough = isOwnCoughReport(text);
+      if (!ownCough) {
+        // Just a question about cough, not the person's own cough.
+        // Answer it, then ask the symptom question again.
+        if (isDiagnosisQuestion(text)) {
+          this.say(copy.KB_NO_DIAGNOSIS);
+        } else {
+          const hit = searchKnowledge(text, this.scenario.symptom);
+          if (hit) {
+            const footer = hit.entry.topic === "care" ? "" : ` ${copy.KB_FOOTER}`;
+            this.say(`${hit.entry.answer}${footer}`, undefined, {
+              sourceLabel: hit.source.label,
+              sourceUrl: hit.source.url,
+            });
+            if (hit.entry.id === "cough_prevent") this.sticker("09-mask.png");
+          } else {
+            this.say(copy.KB_NO_ANSWER);
+          }
+        }
+        this.pending = "symptom";
+        this.say(copy.ASK_SYMPTOM);
+        return;
+      }
+      // Own cough report with a question: fall through to start the cough flow.
+      // The question will be answered after the warning-sign questions.
+      this.pendingQuestionText = text;
+    }
+
     // Prompt 06: only track a cough. For anything else, say so plainly.
     if (!isCoughMention(text)) {
       this.say(copy.NOT_COVERED_YET);
@@ -378,7 +438,7 @@ export class DemoSession {
       return;
     }
 
-    const onsetMatch = extractOnset(text);
+    const onsetMatch = extractOnset(text, this.clock.now());
     const onset: Episode["onset"] = onsetMatch
       ? {
           rawText: onsetMatch.rawText, // the user's own words
@@ -401,9 +461,19 @@ export class DemoSession {
 
     if (onsetMatch) {
       this.say(copy.SYMPTOM_ACKNOWLEDGED(onset.rawText, minDurationDays(this.episode, this.clock)));
-      if (this.lastResult?.redFlagKey) return this.escalateRedFlag(this.lastResult);
+      if (this.lastResult?.redFlagKey) {
+        this.pending = null;
+        return this.escalateRedFlag(this.lastResult);
+      }
       this.startRedFlagQuestions();
     } else {
+      // Onset unknown, but a warning sign may still have been reported in the
+      // first message. Escalate immediately even before the onset is known.
+      if (this.lastResult?.redFlagKey) {
+        // The warning sign comes first. The start date can wait.
+        this.pending = null;
+        return this.escalateRedFlag(this.lastResult);
+      }
       this.pendingOnsetRawText = text;
       this.pending = "onset";
       this.say(copy.ASK_ONSET, copy.ONSET_BUTTONS);
@@ -414,10 +484,20 @@ export class DemoSession {
     if (!this.episode) return;
     const button = params.button ?? "";
     const text = params.text ?? "";
-    const match = extractOnset(text);
+
+    // Questions at the onset step are answered normally and the onset
+    // question is asked again.
+    if (text && (isQuestion(text) || isDiagnosisQuestion(text))) {
+      this.answerRedFlagQuestion(text);
+      this.say(copy.ASK_ONSET, copy.ONSET_BUTTONS);
+      return;
+    }
+
+    const match = extractOnset(text, this.clock.now());
 
     let latestPossible: string;
     let rawText: string;
+    let onsetUnknown = false;
     if (copy.ONSET_BUTTON_MIN_DAYS[button] !== undefined) {
       latestPossible = this.isoDaysAgo(copy.ONSET_BUTTON_MIN_DAYS[button]);
       rawText = button;
@@ -425,17 +505,32 @@ export class DemoSession {
       latestPossible = match.latestPossible;
       rawText = match.rawText;
     } else {
-      // Still unclear: keep their words, claim no duration at all.
+      // Still unreadable. Re-ask once with the buttons.
+      if (!this.onsetReasked) {
+        this.onsetReasked = true;
+        if (text) this.pendingOnsetRawText = text;
+        this.pending = "onset";
+        this.say("Sorry, I couldn't read that. " + copy.ASK_ONSET, copy.ONSET_BUTTONS);
+        return;
+      }
+      // Still unreadable after re-ask: record onset unknown, never claim
+      // "at least 0 days". Use the person's own words.
       latestPossible = this.clock.now();
       rawText = text || this.pendingOnsetRawText || "not sure";
+      onsetUnknown = true;
     }
 
     this.episode = {
       ...this.episode,
-      onset: { rawText, latestPossible, confidence: "approximate" },
+      onset: { rawText, latestPossible, confidence: onsetUnknown ? "unknown" : "approximate" },
     };
     this.store.updateEpisode(this.episode);
-    this.say(copy.SYMPTOM_ACKNOWLEDGED(rawText, minDurationDays(this.episode, this.clock)));
+
+    if (onsetUnknown) {
+      this.say(copy.ONSET_UNKNOWN_ACK(rawText));
+    } else {
+      this.say(copy.SYMPTOM_ACKNOWLEDGED(rawText, minDurationDays(this.episode, this.clock)));
+    }
 
     if (this.lastResult?.redFlagKey) return this.escalateRedFlag(this.lastResult);
     this.startRedFlagQuestions();
@@ -467,12 +562,41 @@ export class DemoSession {
   private async onRedFlagAnswer(params: ProcessMessageParams): Promise<void> {
     const key = this.currentRedFlagKey;
     if (!key) return;
-    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
-    const neg = /\b(no|nope|none|not|never|don't|dont)\b/.test(said);
-    const pos = /\b(yes|yeah|yup|got|have)\b/.test(said);
-    const answer = pos && !neg ? "reported" : neg && !pos ? "denied" : "unknown";
+    const text = (params.text ?? "").trim();
+    const button = params.button ?? "";
+    const said = `${button} ${text}`.toLowerCase().trim();
 
-    // An unclear answer to a warning-sign question is never waved through: ask once more.
+    // A question or a diagnosis question is never an answer. Answer it the
+    // normal way, then ask the same warning-sign question again.
+    if (text && (isQuestion(text) || isDiagnosisQuestion(text))) {
+      this.answerRedFlagQuestion(text);
+      this.say(copy.RED_FLAG_QUESTIONS[key] ?? `Any of this: ${key}?`, copy.YES_NO);
+      return;
+    }
+
+    // Yes only if the reply starts with or is: yes, yeah, yup, ya, yah, y, got,
+    // have (as the first word), or it is a free-text warning-sign report.
+    const YES_FIRST = /^(yes|yeah|yup|ya|yah|y|got|have)\b/i;
+    const NO_WORDS =
+      /^(no|nope|nah|n|none|never|no\s+lah|don'?t\s+have|dont\s+have|no\s+got|nothing)\b/i;
+    // Also check if the extractor picks up a red-flag report from free text.
+    const extracted = this.extractor.extract({ text, button });
+    const freeTextReport = extracted.some(
+      (e) => e.kind === "redflag_answer" && e.redFlags?.[key] === "reported"
+    );
+
+    let answer: "reported" | "denied" | "unknown";
+    if (freeTextReport || YES_FIRST.test(said)) {
+      answer = "reported";
+    } else if (NO_WORDS.test(said)) {
+      answer = "denied";
+    } else {
+      answer = "unknown";
+    }
+
+    // An unclear answer to a warning-sign question is never waved through: ask
+    // once more with Yes / No. If still unclear, record "unknown" (never
+    // "denied") and move on.
     if (answer === "unknown" && !this.redFlagReasked.has(key)) {
       this.redFlagReasked.add(key);
       this.say(`Sorry, I need a clear yes or no. ${copy.RED_FLAG_QUESTIONS[key] ?? ""}`.trim(), copy.YES_NO);
@@ -555,7 +679,13 @@ export class DemoSession {
     // Urgent signs are a threshold the user agreed to at setup. Tell them exactly what was sent.
     if (this.canShare() && !this.redFlagsNotified.has(key)) {
       this.redFlagsNotified.add(key);
-      const text = copy.SUPPORT_URGENT_TEXT(this.person.displayName);
+      // When the support person reports a warning sign, the share text must
+      // say "<support name> told Jaga", not "<person> told Jaga".
+      const isSupportReport = result.reportedBy === "support_person";
+      const reporterName = isSupportReport
+        ? this.scenario.supportPersonName!
+        : this.person.displayName;
+      const text = copy.SUPPORT_URGENT_TEXT(reporterName, result.action);
       this.sentToSupport.push({ day: this.currentDay, text, urgent: true });
       this.system(copy.SENT_TO_SUPPORT(this.scenario.supportPersonName!, text, true));
     }
@@ -572,6 +702,13 @@ export class DemoSession {
     if (this.emergencyPending) return;
     this.say(copy.CLOCK_STARTED(this.policy.checkinEveryDays));
     this.sticker("03-counting.png");
+    // Answer a question that was asked alongside the first cough report,
+    // now that the warning-sign questions are done.
+    if (this.pendingQuestionText) {
+      const q = this.pendingQuestionText;
+      this.pendingQuestionText = null;
+      this.todo.push(() => this.answerRedFlagQuestion(q));
+    }
     // Bug 7b: if a rule already fires when the clock starts (for example
     // "cough 3 weeks already" meets three_weeks_any), show the GP nudge,
     // the reason with its source and the clinic card right after the
@@ -608,7 +745,11 @@ export class DemoSession {
     //    Bug 5: if a warning-sign question is still unanswered when the next
     //    check-in comes, ask it again first, before "Still coughing?".
     const every = this.policy.checkinEveryDays;
-    if ((day - this.monitoringStartDay) % every === 0 && day > this.lastCheckinDayHandled) {
+    // While an appointment is booked and not yet followed up, skip the routine
+    // "Still coughing?" check-in. Ask "Did you manage to see the doctor?" only,
+    // the day after the appointment (handled below).
+    const hasActiveBooking = (this.booking && !this.careSought) || (this.plan && !this.careSought);
+    if ((day - this.monitoringStartDay) % every === 0 && day > this.lastCheckinDayHandled && !hasActiveBooking) {
       if (this.emergencyPending) {
         // Skip this check-in entirely; the user has not replied yet.
         this.lastCheckinDayHandled = day;
