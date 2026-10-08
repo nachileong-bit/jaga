@@ -29,11 +29,27 @@ async function apiCall(endpoint, method, body) {
   };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`${API}/${endpoint}`, opts);
+  if (res.status === 404 && endpoint !== "demo/reset") {
+    // The server restarted (for example after an update) and forgot this chat.
+    // Start a fresh one instead of leaving the buttons dead.
+    sessionId = null;
+    await reset(scenarioSelect.value);
+    showNotice("The demo server restarted, so the chat started again.");
+    return null;
+  }
   if (!res.ok) {
     console.error("API error:", await res.text());
     return null;
   }
   return res.json();
+}
+
+function showNotice(text) {
+  const n = document.createElement("div");
+  n.className = "demo-notice";
+  n.textContent = text;
+  document.body.appendChild(n);
+  setTimeout(() => n.remove(), 6000);
 }
 
 async function reset(scenario) {

@@ -471,3 +471,16 @@ body {
   color: #5a6963;
 }
 .site-footer a { color: #075e54; font-weight: 600; }
+
+.demo-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: #14231d;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 15px;
+  z-index: 50;
+}

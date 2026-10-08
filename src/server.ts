@@ -47,6 +47,9 @@ async function main() {
 
   // ---- API routes ----
 
+  // The demo lives under /web/. Send the bare address there.
+  app.get("/", async (_request, reply) => reply.redirect("/web/"));
+
   // GET /api/knowledge: the knowledge base and the decision rules, read-only.
   app.get("/api/knowledge", async () => ({
     knowledge: loadKnowledgeBase(),
