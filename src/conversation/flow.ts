@@ -95,6 +95,8 @@ export class DemoSession {
   private pendingQuestionText: string | null = null;
   // red-flag screening at the start
   private redFlagQueue: string[] = [];
+  // A cough typed before the "on your own or with someone" choice.
+  private earlySymptom: string | null = null;
   private currentRedFlagKey: string | null = null;
   private redFlagReasked = new Set<string>();
   // check-ins
@@ -197,6 +199,17 @@ export class DemoSession {
     if (reporter === "support_person") {
       if (this.mode !== "independent" && this.episode) {
         await this.handleSupportPersonMessage(params);
+        // If the opening warning-sign questions were still running, carry on with them:
+        // skip the one the trusted person just answered, otherwise ask it again.
+        if (this.pending === "redflag" || (this.pending === null && this.currentRedFlagKey)) {
+          const open = this.currentRedFlagKey;
+          if (open && this.reportedKeys().has(open)) {
+            this.todo.push(() => this.askNextRedFlag());
+          } else {
+            this.pending = "redflag";
+            this.todo.push(() => this.reaskPending());
+          }
+        }
       }
       this.runTodo();
       return this.getState();
@@ -348,8 +361,16 @@ export class DemoSession {
 
   private async route(params: ProcessMessageParams): Promise<void> {
     switch (this.pending) {
-      case "mode":
-        return this.onMode(params);
+      case "mode": {
+        this.onMode(params);
+        // A cough described before the choice was made is used now, so it is not typed twice.
+        if ((this.pending as Pending) === "symptom" && this.earlySymptom) {
+          const text = this.earlySymptom;
+          this.earlySymptom = null;
+          return this.onSymptom({ text });
+        }
+        return;
+      }
       case "symptom":
         return this.onSymptom(params);
       case "onset":
@@ -387,6 +408,7 @@ export class DemoSession {
     // Typed text that is not a choice (a question, a symptom) must not silently pick "On my own".
     if (!params.button && !/\b(own|alone|myself|just me|me only|trusted|add|someone|daughter|son|family|friend|mei ling)\b/.test(choice)) {
       if (params.text && isDiagnosisQuestion(params.text)) this.say(copy.KB_NO_DIAGNOSIS);
+      else if (params.text && isCoughMention(params.text)) this.earlySymptom = params.text; // keep it for after the choice
       this.say(copy.MODE_REASK);
       this.reaskPending();
       return;
@@ -407,7 +429,7 @@ export class DemoSession {
     this.store.upsertPerson(this.person);
 
     this.pending = "symptom";
-    this.say(copy.ASK_SYMPTOM);
+    if (!this.earlySymptom) this.say(copy.ASK_SYMPTOM);
   }
 
   private async onSymptom(params: ProcessMessageParams): Promise<void> {

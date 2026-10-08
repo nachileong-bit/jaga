@@ -57,3 +57,26 @@ describe("QA retest fixes", () => {
     expect(st.transcript.filter((t) => t.text?.startsWith("Reminder: your appointment")).map((t) => t.day)).toEqual([1]);
   });
 });
+
+describe("trusted person reports during the opening questions", () => {
+  it("carries on with the next warning-sign question", async () => {
+    const s = fresh("mr_tan");
+    await s.handleMessage({ button: "Add a trusted person" });
+    await s.handleMessage({ text: "cough 3 weeks already, got phlegm" });
+    const st = await s.handleMessage({ text: "he coughed blood this morning", reporter: "support_person" });
+    expect(st.clockPanel.redFlags.find((f) => f.key === "blood")?.status).toBe("reported");
+    expect(last(st).text).toBe(copy.RED_FLAG_QUESTIONS.breathless_or_chest_pain);
+    expect(last(st).buttons).toEqual(copy.YES_NO);
+  });
+});
+
+describe("cough typed before the first choice", () => {
+  it("is kept and used after the choice", async () => {
+    const s = fresh("ms_lim");
+    await s.handleMessage({ text: "cough 3 weeks already" });
+    const st = await s.handleMessage({ button: "On my own" });
+    expect(st.clockPanel.symptom).toBe("cough");
+    expect(st.clockPanel.minDurationDays).toBeGreaterThanOrEqual(21);
+    expect(last(st).text).toBe(copy.RED_FLAG_QUESTIONS.blood);
+  });
+});
