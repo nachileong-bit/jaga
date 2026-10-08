@@ -13,13 +13,17 @@ import {
   getSession,
   deleteSession,
 } from "./conversation/flow.js";
+import { WahaSender, WhatsAppBridge, parseWahaWebhook } from "./channels/waha.js";
 import type { DemoState } from "./conversation/types.js";
+import { loadKnowledgeBase } from "./knowledge/kb.js";
+import { loadAllPolicies } from "./core/policyLoader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, "..", "web");
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
-const HOST = process.env.HOST ?? "localhost";
+// 0.0.0.0 so a container host (Railway) can reach it; still opens fine on localhost.
+const HOST = process.env.HOST ?? "0.0.0.0";
 
 async function main() {
   const app = Fastify({ logger: true });
@@ -42,6 +46,12 @@ async function main() {
   }
 
   // ---- API routes ----
+
+  // GET /api/knowledge: the knowledge base and the decision rules, read-only.
+  app.get("/api/knowledge", async () => ({
+    knowledge: loadKnowledgeBase(),
+    policies: [...loadAllPolicies().values()],
+  }));
 
   // POST /api/demo/reset
   app.post("/api/demo/reset", async (request, reply) => {
@@ -123,6 +133,52 @@ async function main() {
 
     const state = session.getState();
     return { state };
+  });
+
+  // ---- WhatsApp (WAHA). Only active when the env vars are set. ----
+  const wahaUrl = process.env.WAHA_URL;
+  const wahaKey = process.env.WAHA_API_KEY;
+  const allowed = (process.env.JAGA_ALLOWED_CHATS ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+  const bridge =
+    wahaUrl && wahaKey && allowed.length > 0
+      ? new WhatsAppBridge(
+          new WahaSender({ url: wahaUrl, apiKey: wahaKey, session: process.env.WAHA_SESSION ?? "default" }),
+          {
+            allowedChats: allowed,
+            supportChat: process.env.JAGA_SUPPORT_CHAT || undefined,
+            publicBaseUrl: process.env.PUBLIC_BASE_URL || undefined,
+          }
+        )
+      : null;
+
+  app.post("/webhooks/waha", async (request, reply) => {
+    const secret = (request.query as { secret?: string }).secret;
+    if (!bridge || !process.env.WAHA_WEBHOOK_SECRET || secret !== process.env.WAHA_WEBHOOK_SECRET) {
+      return reply.code(404).send({ error: "not found" });
+    }
+    const msg = parseWahaWebhook(request.body);
+    if (msg) {
+      // Answer WAHA straight away, then talk to the user.
+      void bridge.handleIncoming(msg).catch((err) => app.log.error(err));
+    }
+    return { ok: true };
+  });
+
+  // GET /api/demo/summary  -> structured GP summary (rendered by web/summary.html)
+  app.get("/api/demo/summary", async (request, reply) => {
+    const sessionId = (request.query as { sessionId?: string }).sessionId;
+    if (!sessionId) {
+      return reply.code(400).send({ error: "sessionId required" });
+    }
+    const session = getSession(sessionId);
+    if (!session) {
+      return reply.code(404).send({ error: "session not found" });
+    }
+    const summary = session.getSummary();
+    if (!summary) {
+      return reply.code(404).send({ error: "nothing recorded yet" });
+    }
+    return { summary };
   });
 
   // ---- Start ----

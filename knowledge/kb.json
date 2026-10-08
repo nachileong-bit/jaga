@@ -1,0 +1,294 @@
+{
+  "id": "jaga-knowledge-base",
+  "version": "0.1.0",
+  "status": "PENDING_CLINICIAN_REVIEW",
+  "reviewer": null,
+  "rule": "Every answer is copied from an official Singapore source and keeps its link. Jaga never adds facts of its own. If a question is not covered here, Jaga says so and points to a pharmacist, GP or NurseFirst.",
+  "sources": {
+    "hh_cough": {
+      "label": "HealthHub: Cough",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/cough",
+      "publisher": "HealthHub (Pharmaceutical Society of Singapore)",
+      "sourceReviewed": "2026-01-08",
+      "checkedByJaga": "2026-10-08"
+    },
+    "hh_ulcer": {
+      "label": "HealthHub: Mouth Ulcer",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/mouth-ulcers",
+      "publisher": "HealthHub (Pharmaceutical Society of Singapore)",
+      "sourceReviewed": "2026-01-08",
+      "checkedByJaga": "2026-10-08"
+    },
+    "moh_help": {
+      "label": "MOH: Getting medical help",
+      "url": "https://www.moh.gov.sg/seeking-healthcare/getting-medical-help/",
+      "publisher": "Ministry of Health",
+      "sourceReviewed": "2025-04-22",
+      "checkedByJaga": "2026-10-08"
+    },
+    "scdf_ems": {
+      "label": "SCDF: Emergency Medical Services",
+      "url": "https://scdf.gov.sg/home/about-us/information-on-ems/scdf-emergency-medical-services",
+      "publisher": "Singapore Civil Defence Force",
+      "sourceReviewed": null,
+      "checkedByJaga": "2026-10-08"
+    }
+  },
+  "entries": [
+    {
+      "id": "cough_when_doctor",
+      "topic": "cough",
+      "title": "When should I see a doctor for my cough?",
+      "keywords": [
+        "doctor",
+        "gp",
+        "long",
+        "weeks",
+        "how long"
+      ],
+      "answer": "HealthHub says: see a doctor if your cough does not get better in 2 weeks with self-treatment, gets worse, or lasts more than 8 weeks.",
+      "source": "hh_cough"
+    },
+    {
+      "id": "cough_warning_signs",
+      "topic": "cough",
+      "title": "Cough: other signs to see a doctor",
+      "keywords": [
+        "phlegm",
+        "yellow",
+        "green",
+        "fever",
+        "weight",
+        "sweat",
+        "sweats",
+        "night",
+        "wheeze",
+        "wheezing",
+        "steroid",
+        "steroids",
+        "asthma",
+        "copd",
+        "heart",
+        "watch",
+        "look out"
+      ],
+      "answer": "HealthHub also says see a doctor if you have: thick yellow or green phlegm, fever above 38.6°C, weight loss, a lot of phlegm or bloody or pink frothy phlegm, night sweats, difficulty breathing, wheezing or chest pain. Also if you take steroids or medicine that lowers your immunity, or have heart failure, asthma or COPD.",
+      "source": "hh_cough"
+    },
+    {
+      "id": "cough_self_care",
+      "topic": "cough",
+      "title": "What can I do at home for my cough?",
+      "keywords": [
+        "home",
+        "honey",
+        "lemon",
+        "water",
+        "steam",
+        "soothe",
+        "remedy",
+        "relief",
+        "better",
+        "throat",
+        "self",
+        "care"
+      ],
+      "answer": "HealthHub suggests: drink plenty of water (unless your doctor told you to limit fluids), warm water with honey and lemon to soothe your throat, and steam inhalation. A pharmacist can recommend cough medicine.",
+      "source": "hh_cough"
+    },
+    {
+      "id": "cough_medicine",
+      "topic": "cough",
+      "title": "Which cough medicine should I take?",
+      "keywords": [
+        "medicine",
+        "medication",
+        "syrup",
+        "pharmacy",
+        "pharmacist",
+        "suppressant",
+        "expectorant",
+        "buy",
+        "pill",
+        "pills",
+        "drug"
+      ],
+      "answer": "HealthHub says to ask your pharmacist. Cough suppressants reduce the urge to cough. Expectorants and mucolytics thin the phlegm. Jaga does not recommend a specific medicine or dose.",
+      "source": "hh_cough"
+    },
+    {
+      "id": "cough_bp_medicine",
+      "topic": "cough",
+      "title": "Can my blood pressure medicine cause a cough?",
+      "keywords": [
+        "blood",
+        "pressure",
+        "bp",
+        "hypertension",
+        "side",
+        "effect",
+        "stop",
+        "medication",
+        "medicine",
+        "cause",
+        "causing"
+      ],
+      "answer": "HealthHub says some blood pressure medicines can cause a long-term dry cough. Speak to your doctor about it. Do not stop your medicine on your own.",
+      "source": "hh_cough"
+    },
+    {
+      "id": "cough_prevent",
+      "topic": "cough",
+      "title": "How do I stop getting coughs?",
+      "keywords": [
+        "prevent",
+        "avoid",
+        "stop",
+        "again",
+        "vaccine",
+        "vaccination",
+        "flu",
+        "jab",
+        "mask",
+        "wash",
+        "hands",
+        "pneumococcal"
+      ],
+      "answer": "HealthHub suggests: wash your hands often, get the flu vaccine every year, wear a mask when sick, and avoid smoke. People above 65 or with long-term lung conditions should also consider the pneumococcal vaccine.",
+      "source": "hh_cough"
+    },
+    {
+      "id": "ulcer_when_doctor",
+      "topic": "mouth_ulcer",
+      "title": "When should I see a doctor for my mouth ulcer?",
+      "keywords": [
+        "ulcer",
+        "doctor",
+        "gp",
+        "dentist",
+        "heal",
+        "healing",
+        "long",
+        "days",
+        "weeks",
+        "often",
+        "fever",
+        "rash"
+      ],
+      "answer": "HealthHub says see a doctor if: it has not improved after 7 days of gels or mouthwash, it has not healed within 14 days without treatment, it gets worse, you have a fever or rash, or you get mouth ulcers very often.",
+      "source": "hh_ulcer"
+    },
+    {
+      "id": "ulcer_self_care",
+      "topic": "mouth_ulcer",
+      "title": "What can I do at home for a mouth ulcer?",
+      "keywords": [
+        "home",
+        "salt",
+        "rinse",
+        "saline",
+        "food",
+        "eat",
+        "spicy",
+        "pain",
+        "relief",
+        "self",
+        "care",
+        "soothe"
+      ],
+      "answer": "HealthHub suggests: avoid spicy, hot, acidic and hard food until it heals, and rinse with salt water (1 to 3 teaspoons of salt in 120 to 240 ml of warm water). A pharmacist can suggest a mouthwash, gel or spray.",
+      "source": "hh_ulcer"
+    },
+    {
+      "id": "ulcer_usual",
+      "topic": "mouth_ulcer",
+      "title": "Is a mouth ulcer serious?",
+      "keywords": [
+        "serious",
+        "harmless",
+        "why",
+        "usually",
+        "dangerous",
+        "worry",
+        "worried"
+      ],
+      "answer": "HealthHub says mouth ulcers are usually harmless and clear up within 1 to 2 weeks. Common causes are biting your cheek, stress, or lack of some vitamins. Jaga keeps counting the days so you know when that window has passed.",
+      "source": "hh_ulcer"
+    },
+    {
+      "id": "when_ed",
+      "topic": "care",
+      "title": "When should I go to the emergency department?",
+      "keywords": [
+        "emergency",
+        "a&e",
+        "ae",
+        "hospital",
+        "ed",
+        "urgent",
+        "serious",
+        "chest",
+        "pain",
+        "breathing",
+        "bleeding",
+        "confusion",
+        "vomiting",
+        "blood"
+      ],
+      "answer": "MOH lists these as signs of a medical emergency: sudden or severe pain including chest pain, breathing difficulty, uncontrolled bleeding, sudden confusion, sudden dizziness, numbness, weakness or vision change, coughing or vomiting blood, and continuous vomiting or diarrhoea.",
+      "source": "moh_help"
+    },
+    {
+      "id": "where_mild",
+      "topic": "care",
+      "title": "Where should I go for a mild problem?",
+      "keywords": [
+        "where",
+        "go",
+        "clinic",
+        "polyclinic",
+        "gp",
+        "pharmacist",
+        "mild",
+        "which",
+        "family",
+        "doctor"
+      ],
+      "answer": "MOH says: for mild to moderate symptoms, see a pharmacist or your family doctor at a GP clinic or polyclinic. Go to a hospital emergency department only for signs of a medical emergency.",
+      "source": "moh_help"
+    },
+    {
+      "id": "when_995",
+      "topic": "care",
+      "title": "Should I call 995?",
+      "keywords": [
+        "995",
+        "ambulance",
+        "call",
+        "scdf",
+        "emergency"
+      ],
+      "answer": "SCDF says call 995 only for emergencies, such as cardiac arrest, seizures, breathlessness, loss of consciousness, heavy bleeding, major injuries and stroke. A cough on its own is listed as a non-emergency.",
+      "source": "scdf_ems"
+    },
+    {
+      "id": "nursefirst",
+      "topic": "care",
+      "title": "Who can I call for advice that is not an emergency?",
+      "keywords": [
+        "nurse",
+        "nursefirst",
+        "hotline",
+        "helpline",
+        "call",
+        "advice",
+        "phone",
+        "1777",
+        "number",
+        "talk"
+      ],
+      "answer": "SCDF says you can call the NurseFirst helpline at 6262 6262 for advice on conditions that are not emergencies. Trained nurses will point you to the right care, such as a nearby GP or a video consultation. The 1777 non-emergency ambulance line stops on 1 January 2027.",
+      "source": "scdf_ems"
+    }
+  ]
+}

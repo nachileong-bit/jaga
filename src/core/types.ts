@@ -46,7 +46,9 @@ export type ObservationKind =
   | "checkin"
   | "redflag_answer"
   | "self_treatment"
-  | "silence";
+  | "silence"
+  | "plan"
+  | "care_sought";
 
 export interface Observation {
   id: string;

@@ -1,11 +1,9 @@
 // src/conversation/flow.ts
-// The conversation flow: orchestrates scripted extractor, engine, and
-// produces the transcript. src/core stays pure — this layer has state.
-
-import { randomUUID } from "node:crypto";
+// The conversation layer for the web demo. It owns session state and the
+// transcript. src/core stays pure: every medical decision comes from
+// processObservation() -> policy. Nothing in this file decides urgency.
 
 import type {
-  Clock,
   Episode,
   Mode,
   Observation,
@@ -14,30 +12,24 @@ import type {
   PolicyResult,
   Reporter,
   Symptom,
-  Trajectory,
 } from "../core/types.js";
 import type { Store } from "../core/repository.js";
 import { SimulatedClock } from "../core/clock.js";
 import { createStore } from "../core/repository.js";
-import { createEpisode, processObservation, makeUuid } from "../core/engine.js";
+import { createEpisode, processObservation } from "../core/engine.js";
 import { loadPolicy } from "../core/policyLoader.js";
-import { evaluatePolicy } from "../core/policyEvaluator.js";
-import {
-  getReportedRedFlags,
-  getLatestRedFlagAnswers,
-} from "../core/redFlagScreen.js";
-import {
-  minDurationDays,
-  applyObservation,
-  computeMissedCheckins,
-} from "../core/episodeStateMachine.js";
-import { ScriptedExtractor } from "../llm/ScriptedExtractor.js";
-import type { ExtractorInput } from "../llm/Extractor.js";
+import { getReportedRedFlags, getLatestRedFlagAnswers } from "../core/redFlagScreen.js";
+import { minDurationDays } from "../core/episodeStateMachine.js";
+import { ScriptedExtractor, extractOnset } from "../llm/ScriptedExtractor.js";
+import type { ExtractedObservation } from "../llm/Extractor.js";
 import * as copy from "../copy/en.js";
+import { CLINICS, type ClinicCard } from "../navigation/prototypeData.js";
+import { buildSummary, type GpSummary } from "../navigation/summary.js";
+import { isQuestion, isDiagnosisQuestion, searchKnowledge } from "../knowledge/kb.js";
 import type {
   ClockPanelState,
-  ConversationPhase,
   DemoState,
+  Pending,
   ProcessAdvanceParams,
   ProcessMessageParams,
   TranscriptEntry,
@@ -46,577 +38,904 @@ import type {
 // ---- Scenarios ----
 
 interface Scenario {
-  name: string;
-  mode: Mode;
+  name: "mr_tan" | "ms_lim";
+  defaultMode: Mode;
   personId: string;
   displayName: string;
-  supportPersonId?: string;
   supportPersonName?: string;
   symptom: Symptom;
-  onsetRawText: string;
-  onsetLatest: string;
-  confidence: "exact" | "approximate" | "unknown";
 }
 
 const SCENARIOS: Record<string, Scenario> = {
   mr_tan: {
     name: "mr_tan",
-    mode: "supported",
+    defaultMode: "supported",
     personId: "mr-tan",
     displayName: "Mr Tan",
-    supportPersonId: "mei-ling",
     supportPersonName: "Mei Ling",
     symptom: "cough",
-    onsetRawText: "started a few days ago",
-    onsetLatest: "2026-01-01T08:00:00.000Z",
-    confidence: "approximate",
   },
   ms_lim: {
     name: "ms_lim",
-    mode: "independent",
+    defaultMode: "independent",
     personId: "ms-lim",
     displayName: "Ms Lim",
     symptom: "cough",
-    onsetRawText: "started a few days ago",
-    onsetLatest: "2026-01-01T08:00:00.000Z",
-    confidence: "approximate",
   },
 };
 
-// ---- Session ----
+// Day 0 of the demo = the day the user first talks to Jaga.
+const CLOCK_START = "2026-02-20T08:00:00.000Z";
+const MS_PER_DAY = 86_400_000;
+const NOT_NOW_REASK_DAYS = 7;
+
+type ShareKind = "threshold" | "help";
 
 export class DemoSession {
   private store: Store;
   private clock: SimulatedClock;
   private scenario: Scenario;
-  private episode: Episode | null = null;
-  private person: Person;
-  private phase: ConversationPhase = "init";
-  private transcript: TranscriptEntry[] = [];
-  private extractor = new ScriptedExtractor();
-  private lastResult: PolicyResult | null = null;
   private policy: Policy;
-  private redFlagQuestionsAsked: Set<string> = new Set();
-  private redFlagKeysOrder: string[] = [];
-  private symptomMentioned = false;
-  private clockStarted = false;
+  private extractor = new ScriptedExtractor();
+
+  private person: Person;
+  private mode: Mode;
+  private episode: Episode | null = null;
+  private transcript: TranscriptEntry[] = [];
+  private lastResult: PolicyResult | null = null;
+
+  private pending: Pending = "mode";
+  private todo: Array<() => void> = [];
+
+  // onset
+  private pendingOnsetRawText: string | null = null;
+  // red-flag screening at the start
+  private redFlagQueue: string[] = [];
+  private currentRedFlagKey: string | null = null;
+  private redFlagReasked = new Set<string>();
+  // check-ins
+  private monitoringStartDay: number | null = null;
+  private lastCheckinDayHandled = 0;
+  private outstandingCheckinDay: number | null = null;
+  // self-treatment label waiting for confirmation (never stored until confirmed)
+  private pendingItemLabel: string | null = null;
+  // red flags
+  private redFlagsNotified = new Set<string>();
+  private redFlagActive = false;
+  // disagreement
+  private clarifyAsked = false;
+  // care navigation
+  private navOffered = false;
+  private clinicIndex = 0;
+  private booking: { clinic: ClinicCard; apptDay: number } | null = null;
+  private plan: { label: string; planDay: number } | null = null;
+  private notNowCount = 0;
+  private navReaskDay: number | null = null;
+  private remindLaterDay: number | null = null;
+  private apptReminderSent = false;
+  private wentAskedForDay: number | null = null;
+  private careSought = false;
+  private summaryOffered = false;
+  // sharing
+  private thresholdShareHandled = false;
+  private shareDraft: { kind: ShareKind; text: string } | null = null;
+  private sentToSupport: Array<{ day: number; text: string; urgent: boolean }> = [];
 
   constructor(scenarioKey: "mr_tan" | "ms_lim") {
     this.scenario = SCENARIOS[scenarioKey];
+    this.mode = this.scenario.defaultMode;
     this.store = createStore(":memory:");
-    this.clock = new SimulatedClock("2026-01-01T08:00:00.000Z");
+    this.clock = new SimulatedClock(CLOCK_START);
     this.policy = loadPolicy(this.scenario.symptom);
-    this.clock.advanceToDay(0);
 
-    this.person = {
-      id: this.scenario.personId,
-      displayName: this.scenario.displayName,
-      language: "en",
-      mode: this.scenario.mode,
-      supportPersonId: this.scenario.supportPersonId,
-      consent: {
-        shareAtThresholds: this.scenario.mode === "supported",
-        emergencyContact: this.scenario.supportPersonName,
-      },
-    };
+    this.person = this.buildPerson();
     this.store.upsertPerson(this.person);
 
-    // Red flag key order
-    this.redFlagKeysOrder = this.policy.redFlags.map((rf) => rf.key);
-
-    // Start the conversation
-    this.phase = "mode_select";
-    this.addJaga(copy.GREETING, 0);
-    this.addJaga(copy.MODE_QUESTION, 0, [
-      copy.MODE_BUTTONS.on_my_own,
-      copy.MODE_BUTTONS.add_trusted,
-    ]);
+    this.say(copy.GREETING);
+    this.say(copy.MODE_QUESTION, [copy.MODE_BUTTONS.on_my_own, copy.MODE_BUTTONS.add_trusted]);
   }
 
-  // ---- Public API ----
+  // ------------------------------------------------------------------ public
 
   get currentDay(): number {
-    return SimulatedClock.daysBetween(
-      this.scenario.onsetLatest,
-      this.clock.now()
-    );
+    return SimulatedClock.daysBetween(CLOCK_START, this.clock.now());
   }
 
   getState(): DemoState {
     return {
       day: this.currentDay,
-      mode: this.scenario.mode,
-      phase: this.phase,
-      scenario: this.scenario.name as "mr_tan" | "ms_lim",
+      mode: this.mode,
+      phase: this.pending ?? "idle",
+      scenario: this.scenario.name,
       transcript: [...this.transcript],
       clockPanel: this.buildClockPanel(),
       lastResult: this.lastResult,
     };
   }
 
+  getSummary(): GpSummary | null {
+    if (!this.episode) return null;
+    return buildSummary({
+      displayName: this.person.displayName,
+      mode: this.mode,
+      episode: this.episode,
+      observations: this.store.getObservationsForEpisode(this.episode.id),
+      policy: this.policy,
+      lastResult: this.lastResult,
+      clockStartIso: CLOCK_START,
+      nowIso: this.clock.now(),
+      minDurationDays: minDurationDays(this.episode, this.clock),
+      pendingItemLabel: this.pendingItemLabel,
+    });
+  }
+
   async handleMessage(params: ProcessMessageParams): Promise<DemoState> {
     const reporter: Reporter = params.reporter ?? "user";
-
-    // If there's a text or button, add it to the transcript as the user/support
-    if (params.text || params.button) {
+    const shown = params.text ?? params.button ?? "";
+    if (shown) {
       this.transcript.push({
         role: reporter === "support_person" ? "support_person" : "user",
-        text: params.text ?? params.button ?? "",
+        text: shown,
         day: this.currentDay,
       });
     }
 
-    await this.processPhase(params);
+    // A support person can only speak in supported / assisted mode.
+    if (reporter === "support_person") {
+      if (this.mode !== "independent" && this.episode) {
+        await this.handleSupportPersonMessage(params);
+      }
+      this.runTodo();
+      return this.getState();
+    }
 
+    // Spec rule 6: red-flag screening runs on EVERY message, before anything else.
+    if (this.episode) {
+      const duringQuestions = this.pending === "redflag";
+      const handled = await this.screenMessageForRedFlags(params, duringQuestions);
+      if (handled) {
+        if (duringQuestions) this.todo.push(() => this.askNextRedFlag());
+        this.runTodo();
+        return this.getState();
+      }
+    }
+
+    // Questions are answered from the knowledge base only, never made up.
+    if (params.text && this.answerQuestion(params.text)) {
+      this.runTodo();
+      return this.getState();
+    }
+
+    await this.route(params);
+    this.runTodo();
     return this.getState();
+  }
+
+  /** Steps where a typed reply is an answer to Jaga, not a question for Jaga. */
+  private static readonly NO_QA_STEPS: Pending[] = ["mode", "symptom", "onset", "redflag", "confirm_item"];
+
+  private answerQuestion(text: string): boolean {
+    if (!isQuestion(text) || DemoSession.NO_QA_STEPS.includes(this.pending)) return false;
+    if (isDiagnosisQuestion(text)) {
+      this.say(copy.KB_NO_DIAGNOSIS);
+      return true;
+    }
+    const hit = searchKnowledge(text, this.scenario.symptom);
+    if (!hit) {
+      this.say(copy.KB_NO_ANSWER);
+      return true;
+    }
+    const footer = hit.entry.topic === "care" ? "" : ` ${copy.KB_FOOTER}`;
+    this.say(`${hit.entry.answer}${footer}`, undefined, {
+      sourceLabel: hit.source.label,
+      sourceUrl: hit.source.url,
+    });
+    return true;
   }
 
   async handleAdvance(params: ProcessAdvanceParams): Promise<DemoState> {
-    const toDay = Math.max(params.toDay, this.currentDay);
-    this.clock.advanceToDay(toDay);
+    const from = this.currentDay;
+    const to = Math.max(Math.floor(params.toDay), from); // forward only
+    if (to === from) return this.getState();
 
-    // Check if we've passed a check-in day with no answer
-    if (this.clockStarted && this.episode) {
-      this.checkForMissedCheckins();
+    for (let day = from + 1; day <= to; day++) {
+      this.clock.advanceToDay(day);
+      await this.onNewDay(day);
     }
-
+    this.runTodo();
     return this.getState();
   }
 
-  // ---- Phase processing ----
+  // ------------------------------------------------------------------ routing
 
-  private async processPhase(params: ProcessMessageParams): Promise<void> {
-    switch (this.phase) {
-      case "mode_select":
-        await this.handleModeSelect(params);
-        break;
-      case "symptom_mention":
-        await this.handleSymptomMention(params);
-        break;
-      case "redflag_blood":
-        await this.handleRedFlagAnswer("blood", params);
-        break;
-      case "redflag_breathless":
-        await this.handleRedFlagAnswer("breathless_or_chest_pain", params);
-        break;
-      case "monitoring":
+  private async route(params: ProcessMessageParams): Promise<void> {
+    switch (this.pending) {
+      case "mode":
+        return this.onMode(params);
+      case "symptom":
+        return this.onSymptom(params);
+      case "onset":
+        return this.onOnset(params);
+      case "redflag":
+        return this.onRedFlagAnswer(params);
+      case "confirm_item":
+        return this.onConfirmItem(params);
+      case "clarify":
+        return this.onClarify(params);
+      case "nav":
+        return this.onNav(params);
+      case "plan":
+        return this.onPlan(params);
+      case "share":
+        return this.onShare(params);
+      case "went":
+        return this.onWent(params);
+      case "doctor_said":
+        return this.onDoctorSaid(params);
       case "checkin":
-        await this.handleMonitoringOrCheckin(params);
-        break;
-      case "escalated":
-        // In escalated state, still process messages for tracking
-        await this.handleMonitoringOrCheckin(params);
-        break;
       default:
-        break;
+        return this.onGeneral(params);
     }
   }
 
-  // ---- Mode selection ----
+  // ------------------------------------------------------------------ setup
 
-  private async handleModeSelect(params: ProcessMessageParams): Promise<void> {
-    const button = params.button ?? "";
-    const text = (params.text ?? "").toLowerCase();
+  private onMode(params: ProcessMessageParams): void {
+    const choice = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    const wantsSupport = choice.includes("trusted") || choice.includes("add");
 
-    let chosenMode: Mode;
-    if (
-      button === copy.MODE_BUTTONS.add_trusted ||
-      text.includes("trusted") ||
-      text.includes("add") ||
-      text.includes("mei ling")
-    ) {
-      chosenMode = "supported";
+    if (wantsSupport && this.scenario.supportPersonName) {
+      this.mode = "supported";
+      this.say(copy.MODE_CONFIRM_SUPPORTED(this.scenario.supportPersonName));
+    } else if (wantsSupport) {
+      this.mode = "independent";
+      this.say(copy.MODE_NO_SUPPORT_IN_SCENARIO);
     } else {
-      chosenMode = "independent";
+      this.mode = "independent";
+      this.say(copy.MODE_CONFIRM_INDEPENDENT);
     }
+    this.person = this.buildPerson();
+    this.store.upsertPerson(this.person);
 
-    // If scenario is mr_tan (supported), always use supported. If ms_lim (independent), always independent.
-    // The user choice is just for the flow — scenario determines the actual mode.
-    chosenMode = this.scenario.mode;
-
-    if (chosenMode === "independent") {
-      this.addJaga(copy.MODE_CONFIRM_INDEPENDENT, this.currentDay);
-    } else {
-      const name = this.scenario.supportPersonName ?? "your trusted person";
-      this.addJaga(copy.MODE_CONFIRM_SUPPORTED(name), this.currentDay);
-    }
-
-    // Move to symptom mention
-    this.phase = "symptom_mention";
-    this.addJaga(copy.ASK_SYMPTOM, this.currentDay);
+    this.pending = "symptom";
+    this.say(copy.ASK_SYMPTOM);
   }
 
-  // ---- Symptom mention ----
+  private async onSymptom(params: ProcessMessageParams): Promise<void> {
+    const text = (params.text ?? params.button ?? "").trim();
+    if (!text) return;
 
-  private async handleSymptomMention(params: ProcessMessageParams): Promise<void> {
-    const text = params.text ?? params.button ?? "";
+    const onsetMatch = extractOnset(text);
+    const onset: Episode["onset"] = onsetMatch
+      ? {
+          rawText: onsetMatch.rawText, // the user's own words
+          latestPossible: onsetMatch.latestPossible,
+          confidence: onsetMatch.confidence,
+        }
+      : { rawText: text, latestPossible: this.clock.now(), confidence: "unknown" };
 
-    // Extract using the scripted extractor — for now just get a mention
-    const input: ExtractorInput = { text, button: params.button, reporter: params.reporter };
-    const extracted = this.extractor.extract(input);
-
-    // Use scenario's symptom and onset
-    const onset = {
-      rawText: this.scenario.onsetRawText,
-      latestPossible: this.scenario.onsetLatest,
-      confidence: this.scenario.confidence,
-    };
-
-    // Create the episode
     this.episode = await createEpisode(this.person, this.scenario.symptom, onset, this.clock);
     this.store.insertEpisode(this.episode);
 
-    // Process extracted observations
-    for (const ext of extracted) {
-      const obs = this.buildObservation(ext, params.reporter ?? "user");
-      const { result, episode: updated } = await processObservation(
-        this.store,
-        this.episode,
-        obs,
-        this.clock
-      );
-      this.episode = updated;
-      this.lastResult = result;
-    }
+    await this.record({ kind: "mention", rawText: text }, "user");
 
-    this.symptomMentioned = true;
-    this.addJaga(copy.SYMPTOM_ACKNOWLEDGED(this.scenario.onsetRawText), this.currentDay);
+    // A red flag can be buried in the very first message.
+    const extracted = this.extractor.extract({ text });
+    const reported = extracted.filter(
+      (e) => e.kind === "redflag_answer" && Object.values(e.redFlags ?? {}).includes("reported")
+    );
+    for (const e of reported) await this.record(e, "user");
 
-    // Move to first red-flag question
-    if (this.redFlagKeysOrder.length > 0) {
-      this.phase = "redflag_blood";
-      const firstKey = this.redFlagKeysOrder[0];
-      if (firstKey === "blood") {
-        this.addJaga(copy.ASK_RED_FLAG_BLOOD, this.currentDay, [
-          copy.RED_FLAG_BUTTONS.yes,
-          copy.RED_FLAG_BUTTONS.no,
-        ]);
-      } else {
-        this.phase = "redflag_breathless";
-        this.addJaga(copy.ASK_RED_FLAG_BREATHLESS, this.currentDay, [
-          copy.RED_FLAG_BUTTONS.yes,
-          copy.RED_FLAG_BUTTONS.no,
-        ]);
-      }
+    if (onsetMatch) {
+      this.say(copy.SYMPTOM_ACKNOWLEDGED(onset.rawText, minDurationDays(this.episode, this.clock)));
+      if (this.lastResult?.redFlagKey) return this.escalateRedFlag(this.lastResult);
+      this.startRedFlagQuestions();
     } else {
-      this.startMonitoring();
+      this.pendingOnsetRawText = text;
+      this.pending = "onset";
+      this.say(copy.ASK_ONSET, copy.ONSET_BUTTONS);
     }
   }
 
-  // ---- Red flag answers ----
-
-  private async handleRedFlagAnswer(
-    key: string,
-    params: ProcessMessageParams
-  ): Promise<void> {
+  private onOnset(params: ProcessMessageParams): void {
+    if (!this.episode) return;
     const button = params.button ?? "";
-    const text = (params.text ?? "").toLowerCase();
-    let answer: "reported" | "denied" | "unknown";
+    const text = params.text ?? "";
+    const match = extractOnset(text);
 
-    if (button === "Yes" || text.includes("yes") || text.includes("yeah") || text.includes("got")) {
-      answer = "reported";
-    } else if (button === "No" || text.includes("no") || text.includes("nope") || text.includes("no lah")) {
-      answer = "denied";
+    let latestPossible: string;
+    let rawText: string;
+    if (copy.ONSET_BUTTON_MIN_DAYS[button] !== undefined) {
+      latestPossible = this.isoDaysAgo(copy.ONSET_BUTTON_MIN_DAYS[button]);
+      rawText = button;
+    } else if (match) {
+      latestPossible = match.latestPossible;
+      rawText = match.rawText;
     } else {
-      answer = "unknown";
+      // Still unclear: keep their words, claim no duration at all.
+      latestPossible = this.clock.now();
+      rawText = text || this.pendingOnsetRawText || "not sure";
     }
 
-    this.redFlagQuestionsAsked.add(key);
+    this.episode = {
+      ...this.episode,
+      onset: { rawText, latestPossible, confidence: "approximate" },
+    };
+    this.store.updateEpisode(this.episode);
+    this.say(copy.SYMPTOM_ACKNOWLEDGED(rawText, minDurationDays(this.episode, this.clock)));
 
-    const obs = this.buildObservation(
-      {
-        kind: "redflag_answer",
-        redFlags: { [key]: answer },
-        rawText: params.text ?? button,
-      },
-      params.reporter ?? "user"
-    );
+    if (this.lastResult?.redFlagKey) return this.escalateRedFlag(this.lastResult);
+    this.startRedFlagQuestions();
+  }
 
-    const { result, episode: updated } = await processObservation(
-      this.store,
-      this.episode!,
-      obs,
-      this.clock
-    );
-    this.episode = updated;
-    this.lastResult = result;
+  // ------------------------------------------------------------------ red flags
 
-    // If a red flag was reported, escalate immediately
-    if (answer === "reported" && result.action !== "KEEP_WATCHING") {
-      this.handleEscalation(result);
+  private startRedFlagQuestions(): void {
+    this.redFlagQueue = this.policy.redFlags.map((rf) => rf.key);
+    this.askNextRedFlag();
+  }
+
+  private askNextRedFlag(): void {
+    const key = this.redFlagQueue.shift();
+    if (!key) {
+      this.currentRedFlagKey = null;
+      this.pending = null;
+      this.startMonitoring();
+      return;
+    }
+    this.currentRedFlagKey = key;
+    this.pending = "redflag";
+    this.say(copy.RED_FLAG_QUESTIONS[key] ?? `Any of this: ${key}?`, copy.YES_NO);
+  }
+
+  private async onRedFlagAnswer(params: ProcessMessageParams): Promise<void> {
+    const key = this.currentRedFlagKey;
+    if (!key) return;
+    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    const neg = /\b(no|nope|none|not|never|don't|dont)\b/.test(said);
+    const pos = /\b(yes|yeah|yup|got|have)\b/.test(said);
+    const answer = pos && !neg ? "reported" : neg && !pos ? "denied" : "unknown";
+
+    // An unclear answer to a warning-sign question is never waved through: ask once more.
+    if (answer === "unknown" && !this.redFlagReasked.has(key)) {
+      this.redFlagReasked.add(key);
+      this.say(`Sorry, I need a clear yes or no. ${copy.RED_FLAG_QUESTIONS[key] ?? ""}`.trim(), copy.YES_NO);
       return;
     }
 
-    // Move to next red flag question
-    const nextKey = this.redFlagKeysOrder.find(
-      (k) => !this.redFlagQuestionsAsked.has(k)
+    const result = await this.record(
+      { kind: "redflag_answer", redFlags: { [key]: answer }, rawText: params.text ?? params.button },
+      "user"
     );
+    if (result.redFlagKey) {
+      this.pending = null;
+      this.escalateRedFlag(result);
+      // Keep asking the remaining questions afterwards: a second flag may be more urgent.
+      this.todo.push(() => this.askNextRedFlag());
+      return;
+    }
+    this.askNextRedFlag();
+  }
 
-    if (nextKey === undefined) {
-      this.startMonitoring();
-    } else if (nextKey === "blood") {
-      this.phase = "redflag_blood";
-      this.addJaga(copy.ASK_RED_FLAG_BLOOD, this.currentDay, [
-        copy.RED_FLAG_BUTTONS.yes,
-        copy.RED_FLAG_BUTTONS.no,
-      ]);
-    } else {
-      this.phase = "redflag_breathless";
-      this.addJaga(copy.ASK_RED_FLAG_BREATHLESS, this.currentDay, [
-        copy.RED_FLAG_BUTTONS.yes,
-        copy.RED_FLAG_BUTTONS.no,
-      ]);
+  /** Spec rule 6. Returns true when the message was fully handled here. */
+  private async screenMessageForRedFlags(
+    params: ProcessMessageParams,
+    onlyReports = false
+  ): Promise<boolean> {
+    const extracted = this.extractor
+      .extract({ text: params.text, button: params.button })
+      .filter((e) => e.kind === "redflag_answer")
+      .filter((e) => !onlyReports || Object.values(e.redFlags ?? {}).includes("reported"));
+    if (extracted.length === 0) return false;
+
+    const before = this.reportedKeys();
+    let result: PolicyResult | null = null;
+    for (const e of extracted) result = await this.record(e, "user");
+    const after = this.reportedKeys();
+
+    const newlyReported = [...after].filter((k) => !before.has(k));
+    if (newlyReported.length > 0 && result?.redFlagKey) {
+      this.pending = null;
+      this.escalateRedFlag(result);
+      return true;
+    }
+    // A denial of something reported earlier: sticky, never cleared (spec rule 7).
+    const deniedEarlier = extracted
+      .flatMap((e) => Object.entries(e.redFlags ?? {}))
+      .filter(([k, v]) => v === "denied" && before.has(k))
+      .map(([k]) => k);
+    if (deniedEarlier.length > 0) {
+      this.say(copy.RED_FLAG_DENY_REPLY(deniedEarlier[0]));
+      return true;
+    }
+    return false;
+  }
+
+  private escalateRedFlag(result: PolicyResult): void {
+    const key = result.redFlagKey!;
+    this.redFlagActive = true;
+    // Plain, direct instruction. No persona, no softening.
+    this.say(copy.redFlagMessage(result.action, key));
+
+    // Urgent signs are a threshold the user agreed to at setup. Tell them exactly what was sent.
+    if (this.canShare() && !this.redFlagsNotified.has(key)) {
+      this.redFlagsNotified.add(key);
+      const text = copy.SUPPORT_URGENT_TEXT(this.person.displayName);
+      this.sentToSupport.push({ day: this.currentDay, text, urgent: true });
+      this.system(copy.SENT_TO_SUPPORT(this.scenario.supportPersonName!, text, true));
     }
   }
 
-  // ---- Start monitoring ----
+  // ------------------------------------------------------------------ monitoring
 
   private startMonitoring(): void {
-    this.clockStarted = true;
-    this.phase = "monitoring";
-    this.addJaga(copy.CLOCK_STARTED, this.currentDay);
+    if (this.monitoringStartDay !== null) return;
+    this.monitoringStartDay = this.currentDay;
+    this.lastCheckinDayHandled = this.currentDay;
+    this.say(copy.CLOCK_STARTED(this.policy.checkinEveryDays));
   }
 
-  // ---- Monitoring / check-in ----
+  private async onNewDay(day: number): Promise<void> {
+    if (!this.episode || this.monitoringStartDay === null) return;
 
-  private async handleMonitoringOrCheckin(
-    params: ProcessMessageParams
-  ): Promise<void> {
-    const input: ExtractorInput = {
-      text: params.text,
-      button: params.button,
-      reporter: params.reporter,
-    };
-    const extracted = this.extractor.extract(input);
-
-    let latestResult = this.lastResult;
-
-    for (const ext of extracted) {
-      // Determine observation kind based on phase
-      let obsInput = { ...ext };
-      // If in check-in phase and extracted kind is "mention", treat as check-in
-      if (
-        (this.phase === "checkin" || this.phase === "monitoring") &&
-        obsInput.kind === "mention" &&
-        obsInput.trajectory
-      ) {
-        obsInput.kind = "checkin";
+    // 1. Check-ins. Ask once per check-in day. Silence is recorded only when the
+    //    NEXT check-in day arrives and the previous question was never answered.
+    const every = this.policy.checkinEveryDays;
+    if ((day - this.monitoringStartDay) % every === 0 && day > this.lastCheckinDayHandled) {
+      if (this.outstandingCheckinDay !== null) {
+        await this.record(
+          { kind: "silence", trajectory: "unknown", rawText: "(no reply to check-in)" },
+          "user"
+        );
+        this.system(copy.SILENCE_RECORDED);
       }
-
-      const obs = this.buildObservation(obsInput, params.reporter ?? "user");
-      const { result, episode: updated } = await processObservation(
-        this.store,
-        this.episode!,
-        obs,
-        this.clock
-      );
-      this.episode = updated;
-      latestResult = result;
-      this.lastResult = result;
+      this.lastCheckinDayHandled = day;
+      this.outstandingCheckinDay = null;
+      if (this.pending === null || this.pending === "checkin") {
+        this.pending = "checkin";
+        this.outstandingCheckinDay = day; // only counts as asked if it was really shown
+        this.say(copy.checkinMessage(), copy.CHECKIN_BUTTONS);
+      }
     }
 
-    // Handle the result
-    if (latestResult && latestResult.action !== "KEEP_WATCHING") {
-      this.handleEscalation(latestResult);
+    // 2. Appointment reminder the day before, "did you go?" the day after.
+    if (this.booking && !this.careSought) {
+      if (day === this.booking.apptDay && !this.apptReminderSent) {
+        this.apptReminderSent = true;
+        this.say(copy.APPT_REMINDER(this.booking.clinic.clinic, this.booking.clinic.slotTime));
+      }
+      if (day >= this.booking.apptDay + 1 && this.wentAskedForDay !== this.booking.apptDay) {
+        this.wentAskedForDay = this.booking.apptDay;
+        this.todo.push(() => this.askWent());
+      }
+    } else if (this.plan && !this.careSought) {
+      if (day >= this.plan.planDay + 1 && this.wentAskedForDay !== this.plan.planDay) {
+        this.wentAskedForDay = this.plan.planDay;
+        this.todo.push(() => this.askWent());
+      }
+    }
+
+    // 3. "Remind me later today": asked again the next time the clock moves.
+    if (this.remindLaterDay !== null && day > this.remindLaterDay && !this.booking && !this.plan) {
+      this.remindLaterDay = null;
+      this.todo.push(() => this.offerNavigation(copy.REMIND_LATER_PROMPT));
+    }
+
+    // 4. "Not now": exactly one re-ask, a week later. Never daily.
+    if (this.navReaskDay !== null && day >= this.navReaskDay && !this.booking && !this.plan) {
+      this.navReaskDay = null;
+      this.todo.push(() =>
+        this.offerNavigation(copy.NAV_REASK(minDurationDays(this.episode!, this.clock)))
+      );
+    }
+  }
+
+  /** Free text, check-in answers, quick buttons. */
+  private async onGeneral(params: ProcessMessageParams): Promise<void> {
+    if (!this.episode) return;
+    const extracted = this.extractor
+      .extract({ text: params.text, button: params.button })
+      .filter((e) => e.kind !== "redflag_answer"); // handled by the screen already
+
+    const treatment = extracted.find((e) => e.kind === "self_treatment");
+    const checkin = extracted.find((e) => e.kind === "checkin" && e.trajectory);
+
+    let result: PolicyResult | null = null;
+
+    if (checkin) {
+      result = await this.record(checkin, "user");
+      this.outstandingCheckinDay = null;
+      if (this.pending === "checkin") this.pending = null;
+    }
+
+    if (treatment) {
+      // The event (took something) is recorded. The LABEL is not stored until confirmed (rule 5).
+      result = await this.record(
+        { kind: "self_treatment", item: { label: "unspecified", confirmed: false }, rawText: treatment.rawText },
+        "user"
+      );
+      this.pendingItemLabel = treatment.item?.label ?? null;
+    }
+
+    if (!checkin && !treatment) {
+      result = await this.record({ kind: "mention", rawText: params.text ?? params.button }, "user");
+    }
+
+    if (treatment && this.pendingItemLabel) {
+      this.pending = "confirm_item";
+      this.say(copy.ASK_SELF_TREATMENT_CONFIRM(this.pendingItemLabel), copy.SELF_TREATMENT_BUTTONS);
+      // Whatever the policy says next waits until the label question is answered.
       return;
     }
 
-    // Check for discordance follow-up
-    if (latestResult?.followUps.includes("ASK_CLARIFICATION")) {
-      this.addJaga(copy.ASK_CLARIFICATION_MSG, this.currentDay);
-    }
-
-    // Acknowledge the check-in
-    if (this.phase === "checkin") {
-      const traj = this.episode?.trajectory;
-      if (traj === "better" || traj === "gone") {
-        this.addJaga(
-          `Glad to hear it's ${traj === "gone" ? "gone" : "better"}. I'll keep watching. ${copy.ESCAPE_HATCH}`,
-          this.currentDay
-        );
-      } else if (traj === "same" || traj === "worse") {
-        this.addJaga(
-          `Understood. I'll keep tracking this. ${copy.ESCAPE_HATCH}`,
-          this.currentDay
-        );
-      }
-      this.phase = "monitoring";
-    } else if (this.phase === "monitoring" && extracted.length > 0) {
-      this.addJaga(
-        `Got it. ${copy.ESCAPE_HATCH}`,
-        this.currentDay
-      );
-    }
+    if (result) this.afterResult(result, checkin ?? null);
   }
 
-  // ---- Escalation handling ----
-
-  private handleEscalation(result: PolicyResult): void {
-    this.phase = "escalated";
-
-    if (result.redFlagKey) {
-      // Red flag: direct plain instruction, no persona
-      this.addJaga(copy.redFlagMessage(result.action, result.redFlagKey), this.currentDay);
-
-      // In supported mode, also notify support person
-      if (this.scenario.mode === "supported" && this.scenario.supportPersonName) {
-        this.addJaga(
-          copy.SUPPORT_NOTIFIED(this.scenario.supportPersonName),
-          this.currentDay
-        );
-      }
+  private async onConfirmItem(params: ProcessMessageParams): Promise<void> {
+    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    const label = this.pendingItemLabel;
+    this.pendingItemLabel = null;
+    this.pending = null;
+    if (label && /\b(correct|yes)\b/.test(said) && !said.includes("not")) {
+      await this.record(
+        { kind: "self_treatment", item: { label, confirmed: true }, rawText: "confirmed by user" },
+        "user"
+      );
+      this.say(copy.SELF_TREATMENT_CONFIRMED);
     } else {
-      // Policy rule fired
-      const msg = copy.actionMessage(
-        result.action,
-        result.explain,
-        result.source?.label,
-        result.source?.url
-      );
-      this.addJaga(msg, this.currentDay, undefined, result.source?.label, result.source?.url, true);
+      this.say(copy.SELF_TREATMENT_NOT_RIGHT);
+    }
+    // Taking something can itself complete a sourced rule (for example "not better
+    // after self-treatment"). The action still comes from the policy, never from here.
+    const result = this.lastResult;
+    if (result && !result.redFlagKey && result.action === "SEE_GP" && !this.navOffered) {
+      this.offerNavigation(null, result);
+    }
+    if (this.pending === null && this.outstandingCheckinDay !== null) this.pending = "checkin";
+  }
+
+  /** Turn a policy result into conversation. The ACTION always comes from the policy. */
+  private afterResult(result: PolicyResult, checkin: ExtractedObservation | null): void {
+    if (result.redFlagKey) {
+      if (checkin) this.say(copy.RED_FLAG_REMINDER);
+      return;
+    }
+
+    const t = checkin?.trajectory;
+    const ack =
+      t === "gone" ? copy.CHECKIN_ACK_GONE : t === "better" ? copy.CHECKIN_ACK_BETTER : copy.CHECKIN_ACK_SAME;
+
+    if (result.action === "SEE_GP" && !this.navOffered) {
+      this.offerNavigation(null, result);
+    } else if (result.action === "SEE_GP" && !this.booking && !this.plan && !this.careSought) {
+      this.say(copy.NAV_REMINDER_SHORT(minDurationDays(this.episode!, this.clock)));
+    } else {
+      this.say(checkin ? ack : copy.GENERIC_ACK);
+    }
+
+    if (result.followUps.includes("ASK_CLARIFICATION") && !this.clarifyAsked) {
+      this.todo.push(() => this.askClarification());
     }
   }
 
-  // ---- Check-in trigger (called on advance) ----
+  // ------------------------------------------------------------------ support person
 
-  private checkForMissedCheckins(): void {
-    if (!this.episode || !this.clockStarted) return;
-    if (this.phase === "escalated") return;
+  private async handleSupportPersonMessage(params: ProcessMessageParams): Promise<void> {
+    const extracted = this.extractor.extract({ text: params.text, button: params.button });
+    let result: PolicyResult | null = null;
+    const before = this.reportedKeys();
+    for (const e of extracted) {
+      if (e.kind === "self_treatment") continue; // only the user confirms what they took
+      const kind = e.kind === "mention" && !e.trajectory ? "mention" : e.kind;
+      result = await this.record({ ...e, kind }, "support_person");
+    }
+    if (!result) return;
 
-    const observations = this.store.getObservationsForEpisode(this.episode.id);
-    const checkinEvery = this.policy.checkinEveryDays;
+    const newlyReported = [...this.reportedKeys()].filter((k) => !before.has(k));
+    if (newlyReported.length > 0 && result.redFlagKey) {
+      this.escalateRedFlag(result);
+      return;
+    }
+    if (result.followUps.includes("ASK_CLARIFICATION") && !this.clarifyAsked) {
+      this.todo.push(() => this.askClarification());
+    }
+    if (result.action === "SEE_GP" && !this.navOffered) {
+      this.todo.push(() => this.offerNavigation(null, result!));
+    }
+  }
 
-    // Find the last check-in
-    const lastCheckin = [...observations]
-      .filter((o) => o.kind === "checkin" || o.kind === "mention")
-      .reverse()[0];
+  private askClarification(): void {
+    if (this.pending !== null && this.pending !== "checkin") return;
+    this.clarifyAsked = true;
+    this.pending = "clarify";
+    this.say(copy.ASK_CLARIFICATION_MSG, copy.CLARIFY_BUTTONS);
+  }
 
-    const reference = lastCheckin?.at ?? this.episode.onset.latestPossible;
-    const daysSince = SimulatedClock.daysBetween(reference, this.clock.now());
+  private async onClarify(params: ProcessMessageParams): Promise<void> {
+    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    this.pending = this.outstandingCheckinDay !== null ? "checkin" : null;
+    // "Yes" means the user confirms the symptom is still there. That is state, not urgency.
+    const trajectory = /\byes\b/.test(said) ? "same" : /\bno\b/.test(said) ? undefined : "unknown";
+    const result = await this.record(
+      { kind: "checkin", trajectory, rawText: `clarification: ${params.button ?? params.text ?? ""}` },
+      "user"
+    );
+    this.say(copy.CLARIFY_ACK);
+    if (result.action === "SEE_GP" && !this.navOffered) this.offerNavigation(null, result);
+  }
 
-    // If we've passed a check-in day
-    if (daysSince >= checkinEvery) {
-      const missedCount = Math.floor(daysSince / checkinEvery);
-      if (missedCount > 0 && this.phase !== "checkin") {
-        // Record a silence observation
-        const obsId = this.makeId();
-        const fullObs: Observation = {
-          ...this.buildObservation(
-            {
-              kind: "silence",
-              trajectory: "unknown",
-              rawText: "(no response to check-in)",
-            },
-            "user"
-          ),
-          id: obsId,
-          episodeId: this.episode.id,
-        };
-        this.store.insertObservation(fullObs);
+  // ------------------------------------------------------------------ care navigation
 
-        // Recompute episode state
-        const allObs = this.store.getObservationsForEpisode(this.episode.id);
-        const priorObs = allObs.filter((o) => o.id !== obsId);
-        const updated = applyObservation(
-          this.episode,
-          priorObs,
-          fullObs,
-          this.clock,
-          this.policy.checkinEveryDays,
-          this.policy.resolvedAfterSymptomFreeDays
-        );
-        updated.missedCheckins = computeMissedCheckins(
-          updated,
-          allObs,
-          this.policy.checkinEveryDays,
-          this.clock
-        );
-        this.store.updateEpisode(updated);
-        this.episode = updated;
+  private offerNavigation(intro: string | null, result?: PolicyResult): void {
+    if (this.booking || this.careSought) return;
+    if (this.pending !== null && this.pending !== "checkin") {
+      this.todo.push(() => this.offerNavigation(intro, result));
+      return;
+    }
+    const first = !this.navOffered;
+    this.navOffered = true;
 
-        // Add silence message to transcript
-        this.addJaga(copy.SILENCE_RECORDED, this.currentDay);
+    if (intro) this.say(intro);
+    if (first && result) {
+      this.say(copy.SEE_GP_INTRO(minDurationDays(this.episode!, this.clock)));
+      if (result.explain) {
+        this.say(copy.SEE_GP_WHY(result.explain), undefined, {
+          sourceLabel: result.source?.label,
+          sourceUrl: result.source?.url,
+        });
       }
     }
+    this.showClinicCard();
+  }
 
-    // Trigger a check-in message if we're at a check-in day
-    const nextCheckinDay = this.getNextCheckinDay();
-    if (this.currentDay >= nextCheckinDay && this.phase !== "checkin" && this.phase !== "escalated") {
-      this.phase = "checkin";
-      this.addJaga(copy.checkinMessage(), this.currentDay, copy.CHECKIN_BUTTONS);
+  private showClinicCard(): void {
+    const card = CLINICS[this.clinicIndex % CLINICS.length];
+    const buttons = [
+      copy.NAV_BUTTONS.book,
+      copy.NAV_BUTTONS.others,
+      copy.NAV_BUTTONS.later,
+      copy.NAV_BUTTONS.notNow,
+    ];
+    if (this.canShare()) buttons.push(copy.NAV_BUTTONS.askSupport(this.scenario.supportPersonName!));
+    this.pending = "nav";
+    this.say(card.heading, buttons, { card });
+  }
+
+  private async onNav(params: ProcessMessageParams): Promise<void> {
+    const choice = (params.button ?? params.text ?? "").toLowerCase();
+
+    if (choice.includes("book")) {
+      const clinic = CLINICS[this.clinicIndex % CLINICS.length];
+      this.booking = { clinic, apptDay: this.currentDay + 1 };
+      this.plan = null;
+      this.pending = null;
+      await this.record({ kind: "plan", rawText: `booked (prototype): ${clinic.clinic}, ${clinic.slot}` }, "user");
+      this.say(copy.BOOKED(clinic.clinic, clinic.slot), undefined, { card: clinic });
+      this.offerSummary();
+      this.queueThresholdShare();
+      return;
+    }
+    if (choice.includes("other")) {
+      this.clinicIndex += 1;
+      return this.showClinicCard();
+    }
+    if (choice.includes("later")) {
+      this.pending = null;
+      this.remindLaterDay = this.currentDay;
+      this.say(copy.REMIND_LATER_ACK);
+      return;
+    }
+    if (choice.includes("help") || choice.includes("ask")) {
+      if (this.canShare()) return this.previewShare("help");
+      this.pending = null;
+      return;
+    }
+    // "Not now" (or anything else): respected and logged.
+    await this.record({ kind: "plan", rawText: "declined for now" }, "user");
+    this.notNowCount += 1;
+    if (this.notNowCount === 1) {
+      this.pending = "plan";
+      this.say(copy.ASK_WHEN, [...copy.PLAN_BUTTONS, copy.NAV_BUTTONS.notNow]);
+    } else {
+      this.pending = null;
+      this.say(copy.NOT_NOW_FINAL);
     }
   }
 
-  private getNextCheckinDay(): number {
-    if (!this.episode) return Infinity;
-    const observations = this.store.getObservationsForEpisode(this.episode.id);
-    const lastCheckin = [...observations]
-      .filter((o) => o.kind === "checkin" || o.kind === "mention")
-      .reverse()[0];
-    const reference = lastCheckin?.at ?? this.episode.onset.latestPossible;
-    const daysSince = SimulatedClock.daysBetween(reference, this.clock.now());
-    const checkinEvery = this.policy.checkinEveryDays;
+  private async onPlan(params: ProcessMessageParams): Promise<void> {
+    const choice = (params.button ?? params.text ?? "").trim();
+    const lower = choice.toLowerCase();
+    this.pending = null;
 
-    if (daysSince < checkinEvery) {
-      return this.currentDay + (checkinEvery - daysSince);
+    if (lower.includes("not now") || lower === "no") {
+      // Declined again: one more ask in a week, then never again.
+      this.navReaskDay = this.currentDay + NOT_NOW_REASK_DAYS;
+      this.say(copy.NOT_NOW_LOGGED);
+      return;
     }
-    return this.currentDay;
+    const planDay = lower.includes("weekend") ? this.nextSaturday() : this.currentDay + 1;
+    this.plan = { label: choice, planDay };
+    this.navReaskDay = null;
+    await this.record({ kind: "plan", rawText: `plans to go: ${choice}` }, "user");
+    this.say(copy.PLAN_SET(choice));
+    this.offerSummary();
+    this.queueThresholdShare();
   }
 
-  // ---- Helpers ----
-
-  private buildObservation(
-    ext: {
-      kind: Observation["kind"];
-      trajectory?: Trajectory;
-      redFlags?: Record<string, "reported" | "denied" | "unknown">;
-      item?: { label: string; confirmed: boolean };
-      rawText?: string;
-    },
-    reporter: Reporter
-  ): Omit<Observation, "id" | "episodeId"> {
-    return {
-      at: this.clock.now(),
-      reporter,
-      kind: ext.kind,
-      trajectory: ext.trajectory,
-      redFlags: ext.redFlags,
-      item: ext.item,
-      rawText: ext.rawText,
-    };
+  private askWent(): void {
+    if (this.careSought) return;
+    if (this.pending !== null && this.pending !== "checkin") {
+      this.todo.push(() => this.askWent());
+      return;
+    }
+    this.pending = "went";
+    this.say(copy.DID_YOU_GO, copy.WENT_BUTTONS);
   }
 
-  private makeId(): string {
-    // Use crypto.randomUUID for deterministic session-safe ids (no Date.now())
-    return randomUUID();
+  private onWent(params: ProcessMessageParams): void {
+    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    if (/\byes\b/.test(said) && !said.includes("not")) {
+      this.pending = "doctor_said";
+      this.say(copy.ASK_DOCTOR_SAID);
+      return;
+    }
+    // Not yet: offer the plan buttons once.
+    this.booking = null;
+    this.plan = null;
+    this.pending = "plan";
+    this.say(copy.NOT_YET_REPLY, [...copy.PLAN_BUTTONS, copy.NAV_BUTTONS.notNow]);
   }
 
-  private addJaga(
-    text: string,
-    day: number,
-    buttons?: string[],
-    sourceLabel?: string,
-    sourceUrl?: string,
-    prototypeLabel?: boolean
-  ): void {
-    this.transcript.push({
-      role: "jaga",
-      text,
-      buttons,
-      day,
-      sourceLabel,
-      sourceUrl,
-      prototypeLabel,
+  private async onDoctorSaid(params: ProcessMessageParams): Promise<void> {
+    this.careSought = true;
+    this.pending = this.outstandingCheckinDay !== null ? "checkin" : null;
+    await this.record({ kind: "care_sought", rawText: params.text ?? params.button ?? "" }, "user");
+    this.say(copy.DOCTOR_SAID_ACK);
+  }
+
+  private offerSummary(): void {
+    if (this.summaryOffered) return;
+    this.summaryOffered = true;
+    this.say(copy.SUMMARY_OFFER, undefined, {
+      link: { label: copy.SUMMARY_LINK_LABEL, href: "summary.html" },
     });
   }
 
-  // ---- Clock panel builder ----
+  // ------------------------------------------------------------------ sharing
+
+  private canShare(): boolean {
+    return (
+      this.mode !== "independent" &&
+      !!this.scenario.supportPersonName &&
+      this.person.consent.shareAtThresholds
+    );
+  }
+
+  private queueThresholdShare(): void {
+    if (!this.canShare() || this.thresholdShareHandled) return;
+    this.todo.push(() => this.previewShare("threshold"));
+  }
+
+  private previewShare(kind: ShareKind): void {
+    if (!this.canShare() || !this.episode) return;
+    if (this.pending !== null && this.pending !== "nav" && this.pending !== "checkin") {
+      this.todo.push(() => this.previewShare(kind));
+      return;
+    }
+    const days = minDurationDays(this.episode, this.clock);
+    const make = kind === "help" ? copy.HELP_TEXT : copy.THRESHOLD_TEXT;
+    const text = make(this.person.displayName, this.episode.symptom.replace("_", " "), days);
+    this.shareDraft = { kind, text };
+    this.thresholdShareHandled = true; // one preview covers the threshold
+    this.pending = "share";
+    this.say(copy.SHARE_PREVIEW(this.scenario.supportPersonName!, text), copy.SHARE_BUTTONS);
+  }
+
+  private onShare(params: ProcessMessageParams): void {
+    const said = (params.button ?? params.text ?? "").toLowerCase();
+    const draft = this.shareDraft;
+    this.shareDraft = null;
+    this.pending = null;
+    if (draft && said.startsWith("send")) {
+      this.sentToSupport.push({ day: this.currentDay, text: draft.text, urgent: false });
+      this.system(copy.SENT_TO_SUPPORT(this.scenario.supportPersonName!, draft.text));
+    } else {
+      this.say(copy.SHARE_NOT_SENT);
+    }
+    // After asking for help, the visit still needs a time.
+    if (draft?.kind === "help" && !this.booking && !this.plan) {
+      this.pending = "plan";
+      this.say("When could you go?", [...copy.PLAN_BUTTONS, copy.NAV_BUTTONS.notNow]);
+    }
+  }
+
+  // ------------------------------------------------------------------ helpers
+
+  private async record(
+    ext: Partial<ExtractedObservation> & { kind: Observation["kind"] },
+    reporter: Reporter
+  ): Promise<PolicyResult> {
+    const { result, episode } = await processObservation(
+      this.store,
+      this.episode!,
+      {
+        at: this.clock.now(),
+        reporter,
+        kind: ext.kind,
+        trajectory: ext.trajectory,
+        redFlags: ext.redFlags,
+        item: ext.item,
+        rawText: ext.rawText,
+      },
+      this.clock
+    );
+    this.episode = episode;
+    this.lastResult = result;
+    return result;
+  }
+
+  private reportedKeys(): Set<string> {
+    if (!this.episode) return new Set();
+    return new Set(getReportedRedFlags(this.store.getObservationsForEpisode(this.episode.id)).keys());
+  }
+
+  private runTodo(): void {
+    let guard = 0;
+    while (this.todo.length > 0 && guard++ < 20) {
+      const before = this.todo.length;
+      const job = this.todo.shift()!;
+      job();
+      // A job that could not run re-queues itself; stop to avoid spinning.
+      if (this.todo.length >= before && this.pending !== null) break;
+    }
+  }
+
+  private buildPerson(): Person {
+    const supported = this.mode !== "independent";
+    return {
+      id: this.scenario.personId,
+      displayName: this.scenario.displayName,
+      language: "en",
+      mode: this.mode,
+      supportPersonId: supported ? "support-1" : undefined,
+      consent: { shareAtThresholds: supported },
+    };
+  }
+
+  private isoDaysAgo(days: number): string {
+    return new Date(this.clock.nowMs() - days * MS_PER_DAY).toISOString();
+  }
+
+  private nextSaturday(): number {
+    const dow = new Date(this.clock.nowMs()).getUTCDay(); // 6 = Saturday
+    const delta = (6 - dow + 7) % 7 || 7;
+    return this.currentDay + delta;
+  }
+
+  private say(
+    text: string,
+    buttons?: string[],
+    extra?: Partial<Pick<TranscriptEntry, "sourceLabel" | "sourceUrl" | "card" | "link">>
+  ): void {
+    this.transcript.push({ role: "jaga", text, buttons, day: this.currentDay, ...extra });
+  }
+
+  private system(text: string): void {
+    this.transcript.push({ role: "system", text, day: this.currentDay });
+  }
+
+  /** For tests and the summary: everything that actually left for the support person. */
+  getSentToSupport(): Array<{ day: number; text: string; urgent: boolean }> {
+    return [...this.sentToSupport];
+  }
+
+  // ------------------------------------------------------------------ clock panel
 
   private buildClockPanel(): ClockPanelState {
     const episode = this.episode;
     if (!episode) {
       return {
-        mode: this.scenario.mode,
+        mode: this.mode,
         symptom: null,
         onsetRawText: null,
         minDurationDays: 0,
@@ -640,7 +959,6 @@ export class DemoSession {
 
     const redFlags = this.policy.redFlags.map((rf) => {
       const report = reported.get(rf.key);
-      const latestAnswer = latest[rf.key];
       if (report) {
         return {
           key: rf.key,
@@ -649,24 +967,11 @@ export class DemoSession {
           reportedAt: report.at,
         };
       }
-      if (latestAnswer === "denied") {
-        return { key: rf.key, status: "denied" as const };
-      }
-      return { key: rf.key, status: "unknown" as const };
+      return { key: rf.key, status: latest[rf.key] === "denied" ? ("denied" as const) : ("unknown" as const) };
     });
 
-    const selfTreatment = observations
-      .filter((o) => o.kind === "self_treatment" && o.item)
-      .map((o) => ({ label: o.item!.label, confirmed: o.item!.confirmed }));
-
-    // Deduplicate by label, keeping the latest
-    const seen = new Map<string, { label: string; confirmed: boolean }>();
-    for (const st of selfTreatment) {
-      seen.set(st.label, st);
-    }
-
     return {
-      mode: this.scenario.mode,
+      mode: this.mode,
       symptom: episode.symptom,
       onsetRawText: episode.onset.rawText,
       minDurationDays: minDurationDays(episode, this.clock),
@@ -674,18 +979,34 @@ export class DemoSession {
       trajectory: episode.trajectory,
       state: episode.state,
       redFlags,
-      selfTreatment: [...seen.values()],
+      selfTreatment: selfTreatmentView(observations, this.pendingItemLabel),
       discordance: episode.discordance,
       missedCheckins: episode.missedCheckins,
       policyId: episode.policyId,
       policyVersion: episode.policyVersion,
-      pendingReview: true,
+      pendingReview: this.policy.status !== "REVIEWED",
       lastRuleFired: this.lastResult?.ruleId ?? null,
     };
   }
 }
 
-// ---- Session manager (per browser session) ----
+/** Confirmed labels, plus anything still waiting for the user's confirmation. */
+export function selfTreatmentView(
+  observations: Observation[],
+  pendingLabel: string | null
+): { label: string; confirmed: boolean }[] {
+  const items = observations.filter((o) => o.kind === "self_treatment" && o.item);
+  const confirmed = [...new Set(items.filter((o) => o.item!.confirmed).map((o) => o.item!.label))];
+  const view = confirmed.map((label) => ({ label, confirmed: true }));
+  if (pendingLabel) view.push({ label: pendingLabel, confirmed: false });
+  const unnamedEvents = items.filter((o) => !o.item!.confirmed).length;
+  if (unnamedEvents > confirmed.length + (pendingLabel ? 1 : 0)) {
+    view.push({ label: "unspecified", confirmed: false });
+  }
+  return view;
+}
+
+// ---- Session manager (one per browser session) ----
 
 const sessions = new Map<string, DemoSession>();
 
@@ -693,10 +1014,7 @@ export function getSession(sessionId: string): DemoSession | undefined {
   return sessions.get(sessionId);
 }
 
-export function createSession(
-  sessionId: string,
-  scenario: "mr_tan" | "ms_lim"
-): DemoSession {
+export function createSession(sessionId: string, scenario: "mr_tan" | "ms_lim"): DemoSession {
   const session = new DemoSession(scenario);
   sessions.set(sessionId, session);
   return session;

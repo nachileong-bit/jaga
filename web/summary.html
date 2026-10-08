@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jaga - GP summary</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#14231d;background:#f3f5f4;padding:24px 16px}
+.page{max-width:800px;margin:0 auto;background:#fff;border:1px solid #dfe6e3;border-radius:12px;padding:28px 30px}
+h1{font-size:26px;line-height:1.2}
+.sub{color:#5a6963;font-size:15px;margin:4px 0 18px}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:#0f6b57;margin:22px 0 8px;border-bottom:2px solid #e4f3ee;padding-bottom:4px}
+.kv{display:grid;grid-template-columns:190px 1fr;gap:4px 14px}
+.kv dt{color:#5a6963}
+.kv dd{font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:15.5px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #e8eeeb;vertical-align:top}
+th{font-size:13px;color:#5a6963;font-weight:600}
+td.day{white-space:nowrap;width:70px;font-weight:600}
+.flag{font-weight:700}
+.flag.reported{color:#b3261e}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fdf3d6;color:#7a5a00}
+ul{padding-left:20px}
+.footer{margin-top:24px;padding-top:12px;border-top:2px solid #14231d;font-weight:700}
+.note{font-size:13.5px;color:#5a6963;margin-top:6px}
+.actions{max-width:800px;margin:0 auto 14px;display:flex;gap:10px}
+button{font:inherit;padding:8px 16px;border-radius:8px;border:1px solid #0f6b57;background:#0f6b57;color:#fff;font-weight:600;cursor:pointer}
+@media print{body{background:#fff;padding:0}.page{border:0;padding:0}.actions{display:none}}
+@media (max-width:560px){.kv{grid-template-columns:1fr}.page{padding:20px 16px}}
+</style>
+</head>
+<body>
+<div class="actions"><button onclick="window.print()">Print or save as PDF</button></div>
+<div class="page" id="page"><p>Loading...</p></div>
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const sessionId = new URLSearchParams(location.search).get("sessionId");
+
+async function load() {
+  const page = document.getElementById("page");
+  if (!sessionId) { page.innerHTML = "<p>No session. Open this page from the chat.</p>"; return; }
+  const res = await fetch(`/api/demo/summary?sessionId=${encodeURIComponent(sessionId)}`);
+  if (!res.ok) { page.innerHTML = "<p>Nothing has been recorded yet.</p>"; return; }
+  const { summary: s } = await res.json();
+
+  const rule = s.ruleFired;
+  page.innerHTML = `
+    <h1>${esc(s.title)}</h1>
+    <div class="sub">${esc(s.person)} · prepared by Jaga on day ${esc(s.generatedOnDay)} of tracking</div>
+
+    <h2>Symptom</h2>
+    <dl class="kv">
+      <dt>Symptom</dt><dd>${esc(s.symptom)}</dd>
+      <dt>Started, in their words</dt><dd>"${esc(s.onset.inTheirWords)}"</dd>
+      <dt>Duration</dt><dd>at least ${esc(s.onset.minDurationDays)} days (start date is ${esc(s.onset.confidence)})</dd>
+      <dt>How it is going</dt><dd>${esc(s.trajectory)} · episode ${esc(s.state)}</dd>
+    </dl>
+
+    <h2>Warning signs asked</h2>
+    <table>${s.redFlags.map((f) => `<tr><td>${esc(f.key)}</td><td class="flag ${f.status === "REPORTED" ? "reported" : ""}">${esc(f.status)}</td><td>${esc(f.detail)}</td></tr>`).join("")}</table>
+
+    <h2>What they took</h2>
+    ${s.selfTreatment.length ? `<table>${s.selfTreatment.map((t) => `<tr><td>${esc(t.label)}</td><td>${esc(t.status)}</td></tr>`).join("")}</table>` : "<p>Nothing reported.</p>"}
+
+    <h2>Timeline</h2>
+    <table><tr><th>Day</th><th>Who</th><th>What was reported</th></tr>
+      ${s.timeline.map((r) => `<tr><td class="day">Day ${esc(r.day)}</td><td>${esc(r.who)}</td><td>${esc(r.what)}</td></tr>`).join("")}
+    </table>
+    ${s.disagreement ? `<p class="note">${esc(s.disagreement)}</p>` : ""}
+
+    <h2>Why Jaga suggested a visit</h2>
+    ${rule ? `
+      <dl class="kv">
+        <dt>Suggested action</dt><dd>${esc(rule.action.replace(/_/g, " "))}</dd>
+        <dt>Rule</dt><dd>${esc(rule.ruleId ?? "none")}</dd>
+        <dt>Rule set</dt><dd>${esc(rule.policy)} <span class="badge">${esc(rule.policyStatus)}</span></dd>
+        <dt>Based on</dt><dd>${rule.sourceUrl ? `<a href="${esc(rule.sourceUrl)}">${esc(rule.sourceLabel)}</a>` : "none"}</dd>
+      </dl>
+      ${rule.explain ? `<p class="note">${esc(rule.explain)}</p>` : ""}
+      <p class="note">The rule is applied by fixed logic, not by an AI model.</p>` : "<p>No rule has fired.</p>"}
+
+    <h2>What Jaga is unsure about</h2>
+    ${s.unsure.length ? `<ul>${s.unsure.map((u) => `<li>${esc(u)}</li>`).join("")}</ul>` : "<p>Nothing noted.</p>"}
+
+    <div class="footer">${esc(s.footer)}</div>
+    <p class="note">Hackathon prototype. Time in this demo is simulated. Jaga is built by ZES Consulting (zesconsulting.com).</p>`;
+}
+load();
+</script>
+</body>
+</html>

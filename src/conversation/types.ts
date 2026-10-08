@@ -4,23 +4,34 @@
 
 import type { ActionType, Mode, PolicyResult, Reporter, Trajectory } from "../core/types.js";
 
-export type ConversationPhase =
-  | "init"
-  | "mode_select"
-  | "symptom_mention"
-  | "redflag_blood"
-  | "redflag_breathless"
-  | "monitoring"
+import type { ClinicCard } from "../navigation/prototypeData.js";
+
+// What Jaga is currently waiting for. null = nothing pending.
+export type Pending =
+  | "mode"
+  | "symptom"
+  | "onset"
+  | "redflag"
   | "checkin"
-  | "escalated";
+  | "confirm_item"
+  | "clarify"
+  | "nav"
+  | "plan"
+  | "share"
+  | "went"
+  | "doctor_said"
+  | null;
+
+export type ConversationPhase = Exclude<Pending, null> | "idle";
 
 export interface TranscriptEntry {
-  role: "jaga" | "user" | "support_person";
+  role: "jaga" | "user" | "support_person" | "system";
   text: string;
   buttons?: string[];
   sourceLabel?: string;
   sourceUrl?: string;
-  prototypeLabel?: boolean;
+  card?: ClinicCard;
+  link?: { label: string; href: string };
   day: number;
 }
 

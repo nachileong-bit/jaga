@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jaga - Knowledge base</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#14231d;background:#f3f5f4;padding:24px 16px}
+.page{max-width:900px;margin:0 auto;background:#fff;border:1px solid #dfe6e3;border-radius:12px;padding:28px 30px}
+h1{font-size:26px;line-height:1.2}
+.sub{color:#5a6963;font-size:15px;margin:4px 0 14px}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:#0f6b57;margin:26px 0 10px;border-bottom:2px solid #e4f3ee;padding-bottom:4px}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fdf3d6;color:#7a5a00;vertical-align:middle}
+.rule{background:#e4f3ee;border-radius:8px;padding:12px 14px;font-size:15.5px}
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.how div{border:1px solid #dfe6e3;border-radius:8px;padding:10px 12px;font-size:14.5px}
+.how b{display:block;color:#0f6b57}
+.search{width:100%;font:inherit;padding:10px 12px;border:1px solid #c9d4cf;border-radius:8px;margin-bottom:8px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filters button{font:inherit;font-size:14px;padding:5px 12px;border-radius:99px;border:1px solid #c9d4cf;background:#fff;color:#14231d;cursor:pointer}
+.filters button.on{background:#0f6b57;border-color:#0f6b57;color:#fff}
+.entry{border:1px solid #e1e8e5;border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.entry h3{font-size:16.5px}
+.entry p{margin:4px 0 6px}
+.meta{font-size:13px;color:#5a6963}
+.meta a{color:#0f6b57}
+.tag{font-size:12px;font-weight:700;color:#0f6b57;text-transform:uppercase;letter-spacing:.04em}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #e8eeeb;vertical-align:top}
+th{font-size:13px;color:#5a6963;font-weight:600}
+.act{font-weight:700;white-space:nowrap}
+.act.EMERGENCY_995{color:#b3261e}.act.SEE_DOCTOR_TODAY{color:#a14f00}.act.SEE_GP{color:#0f6b57}
+.empty{color:#5a6963;font-style:italic}
+.footer{margin-top:26px;padding-top:12px;border-top:1px solid #dfe6e3;font-size:14px;color:#5a6963}
+.footer a{color:#0f6b57}
+.back{max-width:900px;margin:0 auto 12px}
+.back a{color:#0f6b57;font-weight:600;text-decoration:none}
+@media (max-width:640px){.how{grid-template-columns:1fr}.page{padding:20px 16px}}
+</style>
+</head>
+<body>
+<div class="back"><a href="/web/">&larr; Back to the demo</a></div>
+<div class="page">
+  <h1>Jaga knowledge base <span class="badge" id="status">PENDING CLINICIAN REVIEW</span></h1>
+  <p class="sub" id="version">Loading...</p>
+  <p class="rule" id="rule"></p>
+
+  <div class="how">
+    <div><b>1. Rules decide</b>When to see a GP, a doctor today, or call 995 comes from the decision rules below. The AI never decides.</div>
+    <div><b>2. Knowledge answers</b>Questions get an answer copied from an official source, with the link shown.</div>
+    <div><b>3. No guessing</b>Not covered here? Jaga says so and points to a pharmacist, GP or NurseFirst 6262 6262. It never names an illness.</div>
+  </div>
+
+  <h2>Answers Jaga can give</h2>
+  <input class="search" id="q" type="search" placeholder="Try: when should I see a doctor?" aria-label="Search the knowledge base">
+  <div class="filters" id="filters">
+    <button data-topic="all" class="on">All</button>
+    <button data-topic="cough">Cough</button>
+    <button data-topic="mouth_ulcer">Mouth ulcer</button>
+    <button data-topic="care">Where to get care</button>
+  </div>
+  <div id="entries"></div>
+
+  <h2>Decision rules</h2>
+  <div id="policies"></div>
+
+  <h2>Sources</h2>
+  <table id="sources"><thead><tr><th>Source</th><th>Publisher</th><th>Source last reviewed</th><th>Checked by Jaga</th></tr></thead><tbody></tbody></table>
+
+  <p class="footer">Hackathon prototype. Not medical advice. Every entry and rule is waiting for a clinician to review it.
+    Built by <a href="https://zesconsulting.com" target="_blank" rel="noopener">ZES Consulting</a>.</p>
+</div>
+<script>
+const TOPIC = { cough: "Cough", mouth_ulcer: "Mouth ulcer", care: "Where to get care" };
+const ACTION = { SEE_GP: "See a GP", SEE_DOCTOR_TODAY: "See a doctor today", EMERGENCY_995: "Call 995" };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const date = d => d ? new Date(d + "T00:00:00").toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" }) : "Not shown";
+let data, topic = "all";
+
+function srcLink(s) { return `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label)}</a>`; }
+
+function renderEntries() {
+  const q = document.getElementById("q").value.toLowerCase().trim();
+  const kb = data.knowledge;
+  const list = kb.entries.filter(e =>
+    (topic === "all" || e.topic === topic) &&
+    (!q || (e.title + " " + e.answer + " " + e.keywords.join(" ")).toLowerCase().split(/\s+/).some(w => q.split(/\s+/).includes(w)))
+  );
+  document.getElementById("entries").innerHTML = list.length ? list.map(e => {
+    const s = kb.sources[e.source];
+    return `<div class="entry"><span class="tag">${TOPIC[e.topic]}</span><h3>${esc(e.title)}</h3><p>${esc(e.answer)}</p>
+      <div class="meta">Source: ${srcLink(s)} · checked ${date(s.checkedByJaga)}</div></div>`;
+  }).join("") : `<p class="empty">Nothing here. Jaga would say it does not have checked information and point to a pharmacist, GP or NurseFirst.</p>`;
+}
+
+function renderPolicies() {
+  document.getElementById("policies").innerHTML = data.policies.map(p => {
+    const name = p.id === "cough" ? "Cough" : "Mouth ulcer";
+    const rows = [
+      ...p.redFlags.map(f => `<tr><td>Warning sign: ${esc(f.key.replace(/_/g, " "))}</td><td class="act ${f.action}">${ACTION[f.action]}</td><td>Any day. Warning sign list needs clinician review</td></tr>`),
+      ...p.rules.map(r => `<tr><td>${esc(r.explain)}</td><td class="act ${r.action}">${ACTION[r.action]}</td><td>${srcLink(p.sources[r.sourceIndex])}</td></tr>`)
+    ].join("");
+    return `<h3 style="font-size:16.5px;margin:12px 0 6px">${name} <span class="meta">version ${esc(p.version)}</span></h3>
+      <table><thead><tr><th>When</th><th>Jaga says</th><th>Based on</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }).join("");
+}
+
+function renderSources() {
+  document.querySelector("#sources tbody").innerHTML = Object.values(data.knowledge.sources).map(s =>
+    `<tr><td>${srcLink(s)}</td><td>${esc(s.publisher)}</td><td>${date(s.sourceReviewed)}</td><td>${date(s.checkedByJaga)}</td></tr>`).join("");
+}
+
+fetch("/api/knowledge").then(r => r.json()).then(d => {
+  data = d;
+  const kb = d.knowledge;
+  document.getElementById("version").textContent = `Version ${kb.version} · ${kb.entries.length} answers · ${Object.keys(kb.sources).length} official sources · ${d.policies.length} rule sets`;
+  document.getElementById("rule").textContent = kb.rule;
+  renderEntries(); renderPolicies(); renderSources();
+});
+document.getElementById("q").addEventListener("input", renderEntries);
+document.getElementById("filters").addEventListener("click", e => {
+  if (!e.target.dataset.topic) return;
+  topic = e.target.dataset.topic;
+  document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("on", b === e.target));
+  renderEntries();
+});
+</script>
+</body>
+</html>

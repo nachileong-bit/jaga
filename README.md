@@ -1,5 +1,9 @@
 # Jaga
 
+**Built by [ZES Consulting](https://zesconsulting.com).** ZES helps companies put AI to work safely. Jaga shows how we build: fixed rules, an audit trail, and a human sign-off.
+
+Live demo: https://jaga-production-dc96.up.railway.app/web/
+
 > Nobody was counting the days. Jaga does.
 
 Jaga is a health companion on WhatsApp. It remembers how long a symptom has
@@ -9,9 +13,24 @@ and helps the person get appropriate care.
 Hackathon: Tencent Cloud x AI Singapore 2026, Healthcare track, Challenge 1
 (Intelligent Self-Triage and Care Navigation).
 
+Knowledge base: https://jaga-production-dc96.up.railway.app/web/knowledge.html
+
+Built with Tencent CodeBuddy alongside other AI coding assistants (multiple LLMs).
+
 ## Status
 
-**Milestones M1 (core engine) and M2 (web demo) are complete.**
+Working prototype: core rule engine, web demo, care navigation, GP summary,
+WhatsApp bridge and a sourced knowledge base. All medical rules and answers are
+marked PENDING_CLINICIAN_REVIEW.
+
+## Knowledge base
+
+`knowledge/kb.json` holds short answers copied from official Singapore sources
+(HealthHub, MOH, SCDF), each with its link and the date it was checked.
+`src/knowledge/kb.ts` looks answers up by keyword, with no AI, so Jaga can only
+ever reply with a stored, sourced answer. If nothing matches, Jaga says it does
+not know and points to a pharmacist, GP or the NurseFirst helpline. It never
+names an illness. Warning signs are screened before any question is answered.
 
 ## Run tests
 
@@ -94,3 +113,7 @@ web/                  demo page: phone frame + day slider + live Jaga Clock pane
 tests/unit/           Vitest unit tests
 tests/timelines/      *.json synthetic timelines + runner
 ```
+
+## Licence
+
+Copyright (c) 2026 ZES Consulting. All rights reserved. See `LICENSE`.

@@ -1,6 +1,6 @@
-// web/app.js — Jaga web demo. Vanilla JS, no framework, no build step.
+// web/app.js - Jaga web demo. Vanilla JS, no framework, no build step.
 
-const API = "/api/demo";
+const API = "/api";
 let sessionId = null;
 let currentDay = 0;
 let scenarioMode = "supported";
@@ -124,12 +124,39 @@ function renderTranscript(transcript) {
       msg.appendChild(source);
     }
 
-    // Prototype label
-    if (entry.prototypeLabel) {
-      const proto = document.createElement("div");
-      proto.className = "msg-prototype";
-      proto.textContent = "PROTOTYPE DATA";
-      msg.appendChild(proto);
+    // Clinic card. Everything on it is prototype data and is labelled as such.
+    if (entry.card) {
+      const c = entry.card;
+      const card = document.createElement("div");
+      card.className = "msg-card";
+      const lab = document.createElement("div");
+      lab.className = "msg-prototype";
+      lab.textContent = c.label;
+      card.appendChild(lab);
+      for (const [cls, line] of [
+        ["card-clinic", c.clinic],
+        ["card-line", c.distance],
+        ["card-slot", "Next appointment: " + c.slot],
+        ["card-line", c.consult],
+        ["card-line", c.outOfPocket],
+      ]) {
+        const row = document.createElement("div");
+        row.className = cls;
+        row.textContent = line;
+        card.appendChild(row);
+      }
+      msg.appendChild(card);
+    }
+
+    // Link (GP summary)
+    if (entry.link) {
+      const a = document.createElement("a");
+      a.className = "msg-link";
+      a.href = `${entry.link.href}?sessionId=${encodeURIComponent(sessionId)}`;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = entry.link.label;
+      msg.appendChild(a);
     }
 
     // Buttons
@@ -162,16 +189,16 @@ function renderClockPanel(panel) {
   const rows = [];
 
   rows.push(clockRow("Mode", panel.mode));
-  rows.push(clockRow("Symptom", panel.symptom ?? "—", !panel.symptom));
-  rows.push(clockRow("Onset (raw)", panel.onsetRawText ?? "—", !panel.onsetRawText));
+  rows.push(clockRow("Symptom", panel.symptom ?? "-", !panel.symptom));
+  rows.push(clockRow("Onset (raw)", panel.onsetRawText ?? "-", !panel.onsetRawText));
   rows.push(clockRow("Min duration (days)", String(panel.minDurationDays)));
-  rows.push(clockRow("Confidence", panel.confidence ?? "—", !panel.confidence));
-  rows.push(clockRow("Trajectory", panel.trajectory ?? "—", !panel.trajectory));
-  rows.push(clockRow("State", panel.state ?? "—", !panel.state));
+  rows.push(clockRow("Confidence", panel.confidence ?? "-", !panel.confidence));
+  rows.push(clockRow("Trajectory", panel.trajectory ?? "-", !panel.trajectory));
+  rows.push(clockRow("State", panel.state ?? "-", !panel.state));
   rows.push(clockRow("Discordance", panel.discordance ? "Yes" : "No"));
   rows.push(clockRow("Missed check-ins", String(panel.missedCheckins)));
-  rows.push(clockRow("Policy", `${panel.policyId ?? "—"} v${panel.policyVersion ?? "—"}`));
-  rows.push(clockRow("Last rule fired", panel.lastRuleFired ?? "—", !panel.lastRuleFired));
+  rows.push(clockRow("Policy", `${panel.policyId ?? "-"} v${panel.policyVersion ?? "-"}`));
+  rows.push(clockRow("Last rule fired", panel.lastRuleFired ?? "-", !panel.lastRuleFired));
 
   // Red flags
   if (panel.redFlags && panel.redFlags.length > 0) {
@@ -200,7 +227,7 @@ function renderClockPanel(panel) {
       .join("");
     rows.push(clockRowHtml("Self-treatment", stHtml));
   } else {
-    rows.push(clockRow("Self-treatment", "—", true));
+    rows.push(clockRow("Self-treatment", "-", true));
   }
 
   clockContent.innerHTML = rows.join("");
@@ -252,7 +279,7 @@ daySlider.addEventListener("change", (e) => {
   if (newDay > currentDay) {
     advance(newDay);
   } else {
-    // Can't go backwards — reset the slider
+    // Can't go backwards - reset the slider
     daySlider.value = currentDay;
     dayValue.textContent = currentDay;
   }

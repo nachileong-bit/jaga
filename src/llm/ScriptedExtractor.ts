@@ -27,6 +27,28 @@ const PHRASE_TRAJECTORY: Array<{ phrases: string[]; trajectory: Trajectory }> = 
   { phrases: ["gone", "all gone", "cleared up", "no more"], trajectory: "gone" },
 ];
 
+// Onset phrase recognition (spec rule 3: never invent precision)
+// Maps a time phrase in the user's text to a latestPossible ISO date.
+export interface OnsetMatch {
+  rawText: string;
+  latestPossible: string;
+  confidence: "approximate";
+}
+
+export function extractOnset(text: string): OnsetMatch | null {
+  // "before CNY" / "before Chinese New Year": CNY 2026 is 17 Feb, so the latest
+  // possible onset is 16 Feb. rawText is always the user's OWN words (spec rule 3).
+  const match = text.match(/(since\s+)?before\s+(cny|chinese new year)/i);
+  if (match) {
+    return {
+      rawText: match[0].trim(),
+      latestPossible: "2026-02-16T08:00:00.000Z",
+      confidence: "approximate",
+    };
+  }
+  return null;
+}
+
 export class ScriptedExtractor implements Extractor {
   extract(input: ExtractorInput): ExtractedObservation[] {
     const results: ExtractedObservation[] = [];
