@@ -43,7 +43,7 @@ describe("Engine (integration)", () => {
     clock.advanceToDay(0);
     const episode = await createEpisode(basePerson, "cough", baseOnset, clock);
     expect(episode.policyId).toBe("cough");
-    expect(episode.policyVersion).toBe("0.1.0");
+    expect(episode.policyVersion).toBe("0.2.0");
     expect(episode.state).toBe("ACTIVE");
     expect(episode.trajectory).toBe("unknown");
   });
@@ -90,7 +90,7 @@ describe("Engine (integration)", () => {
       clock
     );
 
-    expect(result.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result.action).toBe("EMERGENCY_995");
     expect(result.redFlagKey).toBe("blood");
   });
 
@@ -204,7 +204,7 @@ describe("Engine (integration)", () => {
     }, clock);
 
     // Still escalated — red flag is sticky
-    expect(result.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result.action).toBe("EMERGENCY_995");
     expect(result.redFlagKey).toBe("blood");
   });
 });

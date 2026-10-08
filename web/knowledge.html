@@ -36,6 +36,10 @@ th{font-size:13px;color:#5a6963;font-weight:600}
 .footer a{color:#0f6b57}
 .back{max-width:900px;margin:0 auto 12px}
 .back a{color:#0f6b57;font-weight:600;text-decoration:none}
+.safety{background:#fff4f4;border:1px solid #f0c8c4;border-radius:10px;padding:14px 16px;margin:0 0 18px}
+.safety h2{color:#b3261e;border-bottom:2px solid #f0c8c4;margin:0 0 8px}
+.safety ul{margin:0;padding-left:20px}
+.safety li{font-size:15px;margin-bottom:4px;line-height:1.45}
 @media (max-width:640px){.how{grid-template-columns:1fr}.page{padding:20px 16px}}
 </style>
 </head>
@@ -45,6 +49,15 @@ th{font-size:13px;color:#5a6963;font-weight:600}
   <h1>Jaga knowledge base <span class="badge" id="status">PENDING CLINICIAN REVIEW</span></h1>
   <p class="sub" id="version">Loading...</p>
   <p class="rule" id="rule"></p>
+
+  <div class="safety">
+    <h2>Clinical safety</h2>
+    <ul>
+      <li>Jaga does not diagnose. Fixed rules copied from HealthHub and MOH decide when to nudge. AI never decides how urgent something is.</li>
+      <li>Warning signs are checked first and at every check-in. Coughing blood, trouble breathing or chest pain always point to emergency care.</li>
+      <li>These rules are a prototype waiting for review by a Singapore-registered doctor. For adults only. If you're worried, see a GP or call NurseFirst on 6262 6262. In an emergency, call 995.</li>
+    </ul>
+  </div>
 
   <div class="how">
     <div><b>1. Rules decide</b>When to see a GP, a doctor today, or call 995 comes from the decision rules below. The AI never decides.</div>
@@ -98,7 +111,7 @@ function renderPolicies() {
   document.getElementById("policies").innerHTML = data.policies.map(p => {
     const name = p.id === "cough" ? "Cough" : "Mouth ulcer";
     const rows = [
-      ...p.redFlags.map(f => `<tr><td>Warning sign: ${esc(f.key.replace(/_/g, " "))}</td><td class="act ${f.action}">${ACTION[f.action]}</td><td>Any day. Warning sign list needs clinician review</td></tr>`),
+      ...p.redFlags.map(f => `<tr><td>Warning sign: ${esc(f.key.replace(/_/g, " "))}</td><td class="act ${f.action}">${ACTION[f.action]}</td><td>${esc(f.explain || "Any day. Warning sign list needs clinician review")}</td></tr>`),
       ...p.rules.map(r => `<tr><td>${esc(r.explain)}</td><td class="act ${r.action}">${ACTION[r.action]}</td><td>${srcLink(p.sources[r.sourceIndex])}</td></tr>`)
     ].join("");
     return `<h3 style="font-size:16.5px;margin:12px 0 6px">${name} <span class="meta">version ${esc(p.version)}</span></h3>

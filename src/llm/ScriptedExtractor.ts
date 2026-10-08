@@ -38,27 +38,103 @@ export interface OnsetMatch {
 export function extractOnset(text: string): OnsetMatch | null {
   // "before CNY" / "before Chinese New Year": CNY 2026 is 17 Feb, so the latest
   // possible onset is 16 Feb. rawText is always the user's OWN words (spec rule 3).
-  const match = text.match(/(since\s+)?before\s+(cny|chinese new year)/i);
-  if (match) {
+  const cnyMatch = text.match(/(since\s+)?before\s+(cny|chinese new year)/i);
+  if (cnyMatch) {
     return {
-      rawText: match[0].trim(),
+      rawText: cnyMatch[0].trim(),
       latestPossible: "2026-02-16T08:00:00.000Z",
       confidence: "approximate",
     };
   }
+
+  const lower = text.toLowerCase();
+
+  // "3 weeks" / "2 weeks" / "three weeks"
+  let m = lower.match(/\b(\d+)\s+weeks?\b/);
+  if (m) {
+    const weeks = parseInt(m[1], 10);
+    return {
+      rawText: m[0],
+      latestPossible: isoDaysAgoFromBase(weeks * 7, "2026-02-20T08:00:00.000Z"),
+      confidence: "approximate",
+    };
+  }
+  m = lower.match(/\bthree\s+weeks?\b/);
+  if (m) {
+    return {
+      rawText: m[0],
+      latestPossible: isoDaysAgoFromBase(21, "2026-02-20T08:00:00.000Z"),
+      confidence: "approximate",
+    };
+  }
+
+  // "since last week" / "a week ago" / "about a week ago"
+  if (/\b(since\s+last\s+week|about\s+a\s+week\s+ago|a\s+week\s+ago)\b/.test(lower)) {
+    return {
+      rawText: matchPhrase(lower, ["about a week ago", "since last week", "a week ago"]),
+      latestPossible: isoDaysAgoFromBase(7, "2026-02-20T08:00:00.000Z"),
+      confidence: "approximate",
+    };
+  }
+
+  // "1 month" / "since last month" / "a month ago"
+  if (/\b(\d+\s+months?|since\s+last\s+month|a\s+month\s+ago)\b/.test(lower)) {
+    const mm = lower.match(/\b(\d+)\s+months?\b/);
+    const months = mm ? parseInt(mm[1], 10) : 1;
+    return {
+      rawText: mm ? mm[0] : matchPhrase(lower, ["since last month", "a month ago"]),
+      latestPossible: isoDaysAgoFromBase(months * 30, "2026-02-20T08:00:00.000Z"),
+      confidence: "approximate",
+    };
+  }
+
+  // "a few days" / "since a few days"
+  if (/\b(a\s+few\s+days|few\s+days)\b/.test(lower)) {
+    return {
+      rawText: matchPhrase(lower, ["a few days", "few days"]),
+      latestPossible: isoDaysAgoFromBase(2, "2026-02-20T08:00:00.000Z"),
+      confidence: "approximate",
+    };
+  }
+
   return null;
+}
+
+function matchPhrase(lower: string, phrases: string[]): string {
+  for (const p of phrases) {
+    if (lower.includes(p)) return p;
+  }
+  return phrases[0];
+}
+
+/** Compute an ISO date `days` before the given base ISO string. */
+function isoDaysAgoFromBase(days: number, baseIso: string): string {
+  return new Date(new Date(baseIso).getTime() - days * 86_400_000).toISOString();
 }
 
 // Warning-sign phrases. Kept broad on purpose: a false alarm costs a question,
 // a missed one could cost much more.
 const BLOOD_REPORT =
-  /\b(noticed|saw|see|got|have|has|had|there'?s|with|some|spit|spat|coughing|coughed|cough(ing)? up|cough out)\b[^.?!]{0,20}\bblood|\bblood(y)?\b[^.?!]{0,25}\b(cough|phlegm|spit|sputum|mucus)|\b(bloody|pink frothy|blood[- ]stained|blood[- ]streaked)\b[^.?!]{0,15}\b(phlegm|sputum|mucus|spit)/;
+  /\b(noticed|saw|see|got|have|has|had|there'?s|with|some|spit|spat|coughing|coughed|cough(ing)? up|cough out)\b[^.?!]{0,20}\bblood|\bblood(y)?\b[^.?!]{0,25}\b(cough|phlegm|spit|sputum|mucus)|\b(bloody|pink frothy|blood[- ]stained|blood[- ]streaked)\b[^.?!]{0,15}\b(phlegm|sputum|mucus|spit)|\b(batuk\s+darah|darah\s+.*\bbatuk|batuk\s+.*\bdarah)\b/i;
 const NEGATED_BLOOD =
-  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,20}\bblood/;
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,20}\bblood\b/;
 const BREATHLESS_REPORT =
   /\b(breathless|out of breath|short(ness)? of breath|can'?t breathe|cannot breathe|hard to breathe|difficult(y)? (to )?breath(e|ing)|trouble breathing|chest (pain|hurts|tight)|tight(ness)? (in (my|the) )?chest|pain in (my|the) chest)/;
-const NEGATED_BREATHLESS =
-  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)/;
+// "not breathless but chest pain" must still report breathless_or_chest_pain.
+// Only suppress when the whole phrase is a clear denial (e.g. "no chest pain",
+// "not short of breath"). If there is a "but"/"however"/"though" that introduces
+// the symptom, it is still a report.
+const BREATHLESS_DENIAL_WITH_OVERRIDE =
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)\b[^.?!]{0,10}\b(but|however|though|just)\b/i;
+const BREATHLESS_DENIAL =
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)/i;
+
+// New "see a GP soon" warning signs (action SEE_GP, sticky, source HealthHub Cough)
+const HIGH_FEVER_REPORT = /(\bfever\s+(3[89](\.\d+)?|39(\.\d+)?)\b|\btemperature\s+(above|over|higher than)\s+38\.6\b|\b(high\s+fever)\b)/i;
+const WEIGHT_LOSS_REPORT = /\b(lost\s+weight|losing\s+weight|weight\s+loss|lost\s+some\s+weight)\b/i;
+const NIGHT_SWEATS_REPORT = /\b(night\s+sweats?|sweating\s+at\s+night|sweats?\s+at\s+night)\b/i;
+const COLOURED_PHLEGM_REPORT = /\b(yellow\s+phlegm|green\s+phlegm|thick\s+yellow|thick\s+green)\b/i;
+const WHEEZING_REPORT = /\b(wheezing|wheezy|wheeze)\b/i;
 
 export class ScriptedExtractor implements Extractor {
   extract(input: ExtractorInput): ExtractedObservation[] {
@@ -67,7 +143,7 @@ export class ScriptedExtractor implements Extractor {
     const button = (input.button ?? "").trim();
     const lower = text.toLowerCase();
 
-    // 1. Button tap → trajectory check-in
+    // 1. Button tap -> trajectory check-in
     if (button && BUTTON_TRAJECTORY[button]) {
       results.push({
         kind: "checkin",
@@ -96,7 +172,7 @@ export class ScriptedExtractor implements Extractor {
       }
     }
 
-    // 3. "took medicine" → self_treatment (item.confirmed = false until Confirm tapped)
+    // 3. "took medicine" -> self_treatment (item.confirmed = false until Confirm tapped)
     if (
       button === "Took medicine" ||
       lower.includes("took medicine") ||
@@ -111,10 +187,8 @@ export class ScriptedExtractor implements Extractor {
       });
     }
 
-    // 4. "Confirm" button → confirm the most recent self_treatment item
+    // 4. "Confirm" button -> confirm the most recent self_treatment item
     if (button === "Confirm") {
-      // The caller (conversation flow) handles confirmation by updating
-      // the existing observation. Here we just signal it.
       results.push({
         kind: "self_treatment",
         item: { label: "Confirmed", confirmed: true },
@@ -122,9 +196,10 @@ export class ScriptedExtractor implements Extractor {
       });
     }
 
-    // 5 and 6. Blood: reported, or denied. A negation near "blood" is a denial,
-    // anything else that pairs blood with coughing or phlegm is a report.
-    const bloodNegated = NEGATED_BLOOD.test(lower) || lower.includes("no lah");
+    // 5. Blood: reported or denied. A negation only counts as a denial when it
+    //    is specifically about blood ("no blood", "didn't see blood").
+    //    "no lah" anywhere no longer means "no blood".
+    const bloodNegated = NEGATED_BLOOD.test(lower);
     if (button === "Noticed blood" || (!bloodNegated && BLOOD_REPORT.test(lower))) {
       results.push({
         kind: "redflag_answer",
@@ -141,10 +216,42 @@ export class ScriptedExtractor implements Extractor {
 
     // 6b. Breathless or chest pain, in free text. Only reports are read here;
     // a denial still needs the Yes / No question.
-    if (BREATHLESS_REPORT.test(lower) && !NEGATED_BREATHLESS.test(lower)) {
+    // "not breathless but chest pain" must report breathless_or_chest_pain.
+    if (BREATHLESS_REPORT.test(lower) && !BREATHLESS_DENIAL.test(lower)) {
       results.push({
         kind: "redflag_answer",
         redFlags: { breathless_or_chest_pain: "reported" },
+        rawText: text,
+      });
+    } else if (BREATHLESS_REPORT.test(lower) && BREATHLESS_DENIAL_WITH_OVERRIDE.test(lower)) {
+      results.push({
+        kind: "redflag_answer",
+        redFlags: { breathless_or_chest_pain: "reported" },
+        rawText: text,
+      });
+    }
+
+    // 6c. New "see a GP soon" warning signs (sticky, action SEE_GP from the policy).
+    const newFlags: Record<string, "reported"> = {};
+    if (HIGH_FEVER_REPORT.test(lower)) {
+      // Make sure it's actually a high fever: a number of 38.6 or below is not.
+      let isHigh = true;
+      const feverNumMatch = lower.match(/\bfever\s+(\d{2}(\.\d+)?)\b/i);
+      if (feverNumMatch) {
+        const temp = parseFloat(feverNumMatch[1]);
+        if (temp <= 38.6) isHigh = false;
+      }
+      if (isHigh) newFlags.high_fever = "reported";
+    }
+    if (WEIGHT_LOSS_REPORT.test(lower)) newFlags.weight_loss = "reported";
+    if (NIGHT_SWEATS_REPORT.test(lower)) newFlags.night_sweats = "reported";
+    if (COLOURED_PHLEGM_REPORT.test(lower)) newFlags.coloured_phlegm = "reported";
+    if (WHEEZING_REPORT.test(lower)) newFlags.wheezing = "reported";
+
+    if (Object.keys(newFlags).length > 0) {
+      results.push({
+        kind: "redflag_answer",
+        redFlags: newFlags,
         rawText: text,
       });
     }

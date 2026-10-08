@@ -67,9 +67,11 @@ describe("cough mentioned alongside another symptom starts the cough flow", () =
     const state = await say(sid, "fever and cough for 2 weeks");
 
     expect(lastJaga(state).text).not.toBe(copy.NOT_COVERED_YET);
-    // No onset phrase recognised, so Jaga asks roughly when it started.
-    expect(lastJaga(state).text).toBe(copy.ASK_ONSET);
-    expect(state.phase).toBe("onset");
+    // "2 weeks" is now recognised as an onset phrase, so Jaga acknowledges
+    // and starts red-flag screening.
+    expect(allText(state)).toContain("Noted:");
+    expect(state.clockPanel.symptom).toBe("cough");
+    expect(state.phase).toBe("redflag");
   });
 });
 

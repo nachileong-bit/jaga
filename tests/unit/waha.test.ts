@@ -77,13 +77,20 @@ describe("WhatsApp conversation", () => {
     expect(sender.to(ME).some((t) => t.includes('Noted: "since before CNY". That is at least 4 days.'))).toBe(true);
     await send("2"); // No blood
     await send("2"); // No breathlessness
+    await send("2"); // No high fever
+    await send("2"); // No weight loss
+    await send("2"); // No night sweats
+    await send("2"); // No coloured phlegm
+    await send("2"); // No wheezing
     await send("/day 7");
     expect(sender.to(ME).some((t) => t.includes("(Demo) Simulated clock is now day 7"))).toBe(true);
     await send("1"); // Still got
+    await send("2"); // No to the check-in follow-up (warning-sign question)
     await send("took medicine");
     await send("1"); // Correct
     await send("/day 14");
     await send("still got");
+    await send("2"); // No to the check-in follow-up
 
     const card = sender.last(ME);
     expect(card).toContain("[PROTOTYPE DATA · SIMULATED]");
@@ -106,6 +113,11 @@ describe("WhatsApp conversation", () => {
     await send("/reset");
     await send("2");
     await send("cough since before CNY");
+    await send("2");
+    await send("2");
+    await send("2");
+    await send("2");
+    await send("2");
     await send("2");
     await send("2");
     await send("/day 7");

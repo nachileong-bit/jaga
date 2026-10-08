@@ -27,7 +27,7 @@ const baseEpisode: Episode = {
   discordance: false,
   missedCheckins: 0,
   policyId: "cough",
-  policyVersion: "0.1.0",
+  policyVersion: "0.2.0",
 };
 
 const CHECKIN_EVERY = 7;

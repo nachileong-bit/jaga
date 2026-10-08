@@ -82,6 +82,7 @@ export interface Episode {
 export interface RedFlagRule {
   key: string;
   action: ActionType;
+  explain?: string;
 }
 
 export interface PolicyRuleWhen {

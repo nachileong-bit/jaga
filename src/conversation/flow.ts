@@ -26,7 +26,7 @@ import * as copy from "../copy/en.js";
 import { CLINICS, type ClinicCard } from "../navigation/prototypeData.js";
 import { buildSummary, type GpSummary } from "../navigation/summary.js";
 import { isQuestion, isDiagnosisQuestion, searchKnowledge } from "../knowledge/kb.js";
-import { isCoughMention, isEmergencyMention } from "./symptomScope.js";
+import { isCoughMention, isEmergencyMention, isFeverWithoutNumber, isNonCoughSymptom } from "./symptomScope.js";
 import type {
   ClockPanelState,
   DemoState,
@@ -98,6 +98,7 @@ export class DemoSession {
   private monitoringStartDay: number | null = null;
   private lastCheckinDayHandled = 0;
   private outstandingCheckinDay: number | null = null;
+  private checkinFollowupAskedDay: number | null = null;
   // self-treatment label waiting for confirmation (never stored until confirmed)
   private pendingItemLabel: string | null = null;
   // red flags
@@ -208,6 +209,34 @@ export class DemoSession {
       }
     }
 
+    // After the clock has started: fever without a number gets the KB answer;
+    // a non-cough symptom gets NOT_COVERED_YET. Never reply "Noted." to those.
+    if (this.episode && this.monitoringStartDay !== null && params.text) {
+      const text = params.text;
+      const stepsForIntercept: Pending[] = ["mode", "symptom", "onset", "redflag", "checkin_followup", "confirm_item", "clarify", "nav", "share", "went", "doctor_said"];
+      if (!stepsForIntercept.includes(this.pending) && this.pending !== "plan") {
+        if (isFeverWithoutNumber(text) && !isCoughMention(text)) {
+          // Reply with the HealthHub cough answer about fever.
+          const hit = searchKnowledge("what about fever and cough", this.scenario.symptom);
+          if (hit) {
+            this.say(hit.entry.answer, undefined, {
+              sourceLabel: hit.source.label,
+              sourceUrl: hit.source.url,
+            });
+          } else {
+            this.say(copy.NOT_COVERED_YET);
+          }
+          this.runTodo();
+          return this.getState();
+        }
+        if (isNonCoughSymptom(text) && !isCoughMention(text)) {
+          this.say(copy.NOT_COVERED_YET);
+          this.runTodo();
+          return this.getState();
+        }
+      }
+    }
+
     // Questions are answered from the knowledge base only, never made up.
     if (params.text && this.answerQuestion(params.text)) {
       this.runTodo();
@@ -227,7 +256,7 @@ export class DemoSession {
   }
 
   /** Steps where a typed reply is an answer to Jaga, not a question for Jaga. */
-  private static readonly NO_QA_STEPS: Pending[] = ["mode", "symptom", "onset", "redflag", "confirm_item"];
+  private static readonly NO_QA_STEPS: Pending[] = ["mode", "symptom", "onset", "redflag", "checkin_followup", "confirm_item"];
 
   private answerQuestion(text: string): boolean {
     if (!isQuestion(text) || DemoSession.NO_QA_STEPS.includes(this.pending)) return false;
@@ -274,6 +303,8 @@ export class DemoSession {
         return this.onOnset(params);
       case "redflag":
         return this.onRedFlagAnswer(params);
+      case "checkin_followup":
+        return this.onCheckinFollowup(params);
       case "confirm_item":
         return this.onConfirmItem(params);
       case "clarify":
@@ -394,7 +425,10 @@ export class DemoSession {
   // ------------------------------------------------------------------ red flags
 
   private startRedFlagQuestions(): void {
-    this.redFlagQueue = this.policy.redFlags.map((rf) => rf.key);
+    // Only the emergency signs are asked one by one at the start. The "see a GP soon"
+    // signs (fever, weight loss, night sweats, coloured phlegm, wheezing) are picked up
+    // from what the person types, so an older user is not hit with seven questions.
+    this.redFlagQueue = this.policy.redFlags.filter((rf) => rf.action === "EMERGENCY_995").map((rf) => rf.key);
     this.askNextRedFlag();
   }
 
@@ -593,7 +627,36 @@ export class DemoSession {
       return;
     }
 
+    // After "Still got" at a check-in, ask the warning-sign question once.
+    if (checkin && checkin.trajectory === "same" && this.checkinFollowupAskedDay !== this.currentDay) {
+      this.pending = "checkin_followup";
+      this.checkinFollowupAskedDay = this.currentDay;
+      this.pendingCheckinResult = result;
+      this.say(copy.CHECKIN_FOLLOWUP, copy.YES_NO);
+      return;
+    }
+
     if (result) this.afterResult(result, checkin ?? null);
+  }
+
+  private pendingCheckinResult: PolicyResult | null = null;
+
+  private async onCheckinFollowup(params: ProcessMessageParams): Promise<void> {
+    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    const pos = /\b(yes|yeah|yup|got|have)\b/.test(said);
+    const neg = /\b(no|nope|none|not|never|don't|dont)\b/.test(said);
+
+    const result = this.pendingCheckinResult;
+    this.pendingCheckinResult = null;
+    this.pending = null;
+
+    if (pos && !neg) {
+      // Yes: ask the warning-sign questions (blood, breathless, etc).
+      this.startRedFlagQuestions();
+    } else {
+      // No: continue as today. Show the policy result (ack, SEE_GP, etc).
+      if (result && !this.lastResult?.redFlagKey) this.afterResult(result, { trajectory: "same" });
+    }
   }
 
   private async onConfirmItem(params: ProcessMessageParams): Promise<void> {
@@ -774,6 +837,20 @@ export class DemoSession {
   private async onPlan(params: ProcessMessageParams): Promise<void> {
     const choice = (params.button ?? params.text ?? "").trim();
     const lower = choice.toLowerCase();
+
+    // If the user types a trajectory (e.g. "worse") during the plan phase,
+    // process it as a check-in instead of a plan choice. "Not now" for the
+    // clinic card must still let Jaga speak if the cough gets worse.
+    if (params.text && !params.button) {
+      const extracted = this.extractor.extract({ text: params.text });
+      const checkin = extracted.find((e) => e.kind === "checkin" && e.trajectory);
+      const redFlag = extracted.find((e) => e.kind === "redflag_answer");
+      if (checkin || redFlag) {
+        this.pending = null;
+        return this.onGeneral(params);
+      }
+    }
+
     this.pending = null;
 
     if (lower.includes("not now") || lower === "no") {

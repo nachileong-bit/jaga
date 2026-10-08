@@ -1,6 +1,6 @@
 {
   "name": "two_missed_checkins",
-  "description": "Two missed check-ins (silence). Trajectory should remain unknown, never 'better'. Should stay KEEP_WATCHING but missedCheckins should increment.",
+  "description": "Two missed check-ins (silence). Trajectory should remain unknown, never 'better'. By day 21 the three_weeks_any rule fires SEE_GP because the cough has lasted more than three weeks without self-treatment.",
   "symptom": "cough",
   "mode": "independent",
   "onset": {
@@ -19,7 +19,7 @@
     { "day": 0, "action": "KEEP_WATCHING" },
     { "day": 7, "action": "KEEP_WATCHING" },
     { "day": 14, "action": "KEEP_WATCHING" },
-    { "day": 21, "action": "KEEP_WATCHING" },
-    { "day": 22, "action": "KEEP_WATCHING" }
+    { "day": 21, "action": "SEE_GP" },
+    { "day": 22, "action": "SEE_GP" }
   ]
 }

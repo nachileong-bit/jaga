@@ -34,6 +34,12 @@ async function start(scenario: "mr_tan" | "ms_lim", symptomText = "cough a bit s
   const sid = fresh(scenario);
   await tap(sid, scenario === "mr_tan" ? "Add a trusted person" : "On my own");
   await say(sid, symptomText);
+  // Answer all red-flag questions (blood, breathless, high_fever, weight_loss, night_sweats, coloured_phlegm, wheezing).
+  await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
   await tap(sid, "No");
   const state = await tap(sid, "No");
   return { sid, state };
@@ -44,10 +50,14 @@ async function runToSeeGp(scenario: "mr_tan" | "ms_lim") {
   const { sid } = await start(scenario);
   await go(sid, 7);
   await tap(sid, "Still got");
+  // Answer the check-in follow-up (warning-sign question).
+  await tap(sid, "No");
   await tap(sid, "Took medicine");
   await tap(sid, "Correct");
   await go(sid, 14);
-  const state = await tap(sid, "Still got");
+  await tap(sid, "Still got");
+  // Answer the check-in follow-up again.
+  const state = await tap(sid, "No");
   return { sid, state };
 }
 
@@ -110,13 +120,13 @@ describe("A3 silence", () => {
 });
 
 describe("A4 red flags are sticky and notify once", () => {
-  it("blood then 'no lah': advice stays, trusted person told once", async () => {
+  it("blood then 'no blood': advice stays, trusted person told once", async () => {
     const { sid } = await start("mr_tan");
     await go(sid, 9);
     let state = await tap(sid, "Noticed blood");
-    expect(state.lastResult?.action).toBe("SEE_DOCTOR_TODAY");
-    state = await say(sid, "no lah nothing");
-    expect(state.lastResult?.action).toBe("SEE_DOCTOR_TODAY");
+    expect(state.lastResult?.action).toBe("EMERGENCY_995");
+    state = await say(sid, "no blood lah");
+    expect(state.lastResult?.action).toBe("EMERGENCY_995");
     expect(lastJaga(state).text).toContain("my advice stays the same");
     expect(count(state, "Sent to Mei Ling")).toBe(1);
   });
@@ -125,14 +135,14 @@ describe("A4 red flags are sticky and notify once", () => {
     const { sid } = await start("ms_lim");
     await go(sid, 9);
     const state = await say(sid, "aiya still the same lor, this morning saw blood a bit but never mind, going market later");
-    expect(state.lastResult?.action).toBe("SEE_DOCTOR_TODAY");
+    expect(state.lastResult?.action).toBe("EMERGENCY_995");
   });
 
   it("independent mode: nobody is ever told", async () => {
     const { sid } = await start("ms_lim");
     await go(sid, 9);
     const state = await tap(sid, "Noticed blood");
-    expect(state.lastResult?.action).toBe("SEE_DOCTOR_TODAY");
+    expect(state.lastResult?.action).toBe("EMERGENCY_995");
     expect(allText(state)).not.toContain("Sent to");
     expect(getSession(sid)!.getSentToSupport()).toHaveLength(0);
   });

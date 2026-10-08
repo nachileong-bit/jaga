@@ -45,7 +45,7 @@ describe("Store (SQLite repository)", () => {
     discordance: false,
     missedCheckins: 0,
     policyId: "cough",
-    policyVersion: "0.1.0",
+    policyVersion: "0.2.0",
     lastActionAt: "2026-01-01T08:00:00.000Z",
   };
 

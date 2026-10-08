@@ -1,6 +1,6 @@
 {
   "name": "red_flag_sticky_after_deny",
-  "description": "Red flag (blood) reported on day 9, then user denies it on day 10. Red flag stays reported (sticky); action stays SEE_DOCTOR_TODAY.",
+  "description": "Red flag (blood) reported on day 9, then user denies it on day 10. Red flag stays reported (sticky); action stays EMERGENCY_995.",
   "symptom": "cough",
   "mode": "independent",
   "onset": {
@@ -17,7 +17,7 @@
   "expectations": [
     { "day": 0, "action": "KEEP_WATCHING" },
     { "day": 5, "action": "KEEP_WATCHING" },
-    { "day": 9, "action": "SEE_DOCTOR_TODAY", "redFlagKey": "blood" },
-    { "day": 10, "action": "SEE_DOCTOR_TODAY", "redFlagKey": "blood" }
+    { "day": 9, "action": "EMERGENCY_995", "redFlagKey": "blood" },
+    { "day": 10, "action": "EMERGENCY_995", "redFlagKey": "blood" }
   ]
 }

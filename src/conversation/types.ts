@@ -13,6 +13,7 @@ export type Pending =
   | "onset"
   | "redflag"
   | "checkin"
+  | "checkin_followup"
   | "confirm_item"
   | "clarify"
   | "nav"

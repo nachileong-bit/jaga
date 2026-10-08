@@ -53,6 +53,8 @@ describe("searchKnowledge", () => {
     ["can my blood pressure medicine cause this?", "cough", "cough_bp_medicine"],
     ["how do I prevent this?", "cough", "cough_prevent"],
     ["what about the yellow phlegm?", "cough", "cough_warning_signs"],
+    ["my cough has lasted three weeks, is that a concern?", "cough", "cough_three_weeks"],
+    ["when should an adult with a fever see a doctor?", "care", "fever_adult_when_doctor"],
     ["my ulcer, how long until I see a doctor?", "cough", "ulcer_when_doctor"],
     ["is it serious?", "mouth_ulcer", "ulcer_usual"],
   ];
@@ -93,8 +95,8 @@ describe("questions in the chat", () => {
     const s = getSession(sid)!;
     await s.handleMessage({ button: "On my own" });
     await s.handleMessage({ text: "cough since before CNY" });
-    await s.handleMessage({ button: "No" });
-    await s.handleMessage({ button: "No" });
+    // Answer all 7 red-flag questions with "No".
+    for (let i = 0; i < 7; i++) await s.handleMessage({ button: "No" });
     return s;
   }
 

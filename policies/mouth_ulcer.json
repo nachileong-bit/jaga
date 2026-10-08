@@ -1,6 +1,6 @@
 {
   "id": "mouth_ulcer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "status": "PENDING_CLINICIAN_REVIEW",
   "reviewer": null,
   "sources": [
@@ -10,32 +10,37 @@
     }
   ],
   "redFlags": [
-    { "key": "ulcer_spreading_or_growing", "action": "SEE_DOCTOR_TODAY" },
-    { "key": "difficulty_swallowing_or_breathing", "action": "EMERGENCY_995" }
+    { "key": "difficulty_swallowing_or_breathing", "action": "EMERGENCY_995", "explain": "Warning sign list needs clinician review" },
+    { "key": "fever_or_rash", "action": "SEE_GP" }
   ],
   "rules": [
     {
-      "id": "ulcer_not_healing",
+      "id": "ulcer_not_healed_no_treatment",
       "when": {
         "minDurationDays": 14,
+        "selfTreatment": false,
         "trajectoryIn": ["same", "worse", "intermittent"]
       },
       "action": "SEE_GP",
-      "explain": "Your mouth ulcer has not healed after two weeks. Consider seeing a GP or dentist.",
+      "explain": "Your mouth ulcer has not healed within 14 days without treatment. Please see a GP or dentist.",
+      "sourceIndex": 0
+    },
+    {
+      "id": "ulcer_not_better_after_self_treatment",
+      "when": {
+        "minDurationDays": 7,
+        "selfTreatment": true,
+        "trajectoryIn": ["same", "worse", "intermittent"]
+      },
+      "action": "SEE_GP",
+      "explain": "Your mouth ulcer has not improved after 7 days of gels or mouthwash. Please see a GP or dentist.",
       "sourceIndex": 0
     },
     {
       "id": "worsening",
       "when": { "trajectoryIn": ["worse"] },
       "action": "SEE_GP",
-      "explain": "Your mouth ulcer is getting worse. Consider seeing a GP or dentist.",
-      "sourceIndex": 0
-    },
-    {
-      "id": "long_duration",
-      "when": { "minDurationDays": 21 },
-      "action": "SEE_GP",
-      "explain": "Your mouth ulcer has lasted longer than usual. Consider seeing a GP or dentist.",
+      "explain": "Your mouth ulcer is getting worse. Please see a GP or dentist.",
       "sourceIndex": 0
     }
   ],

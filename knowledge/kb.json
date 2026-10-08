@@ -32,6 +32,20 @@
       "publisher": "Singapore Civil Defence Force",
       "sourceReviewed": null,
       "checkedByJaga": "2026-10-08"
+    },
+    "hh_tb": {
+      "label": "HealthHub: Tuberculosis",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/tuberculosis",
+      "publisher": "HealthHub (Pharmaceutical Society of Singapore)",
+      "sourceReviewed": "2026-05-08",
+      "checkedByJaga": "2026-10-09"
+    },
+    "hh_fever": {
+      "label": "HealthHub: Fever",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/fever",
+      "publisher": "HealthHub (Pharmaceutical Society of Singapore)",
+      "sourceReviewed": "2026-01-08",
+      "checkedByJaga": "2026-10-09"
     }
   },
   "entries": [
@@ -158,6 +172,39 @@
       "source": "hh_cough"
     },
     {
+      "id": "cough_three_weeks",
+      "topic": "cough",
+      "title": "My cough has lasted more than three weeks. Is that a concern?",
+      "keywords": [
+        "three",
+        "3",
+        "persistent",
+        "concern",
+        "tb",
+        "tuberculosis"
+      ],
+      "answer": "HealthHub says if you have a cough that persists longer than three weeks, see your doctor immediately.",
+      "source": "hh_tb"
+    },
+    {
+      "id": "fever_adult_when_doctor",
+      "topic": "care",
+      "title": "When should an adult with a fever see a doctor?",
+      "keywords": [
+        "fever",
+        "temperature",
+        "hot",
+        "high",
+        "38",
+        "pregnant",
+        "immune",
+        "medicine",
+        "suppressed"
+      ],
+      "answer": "HealthHub says: for adults, 37.5 degrees C and above is a fever, and above 38.5 degrees C is a high fever. See a doctor if you have a high fever, the fever lasts more than 5 days, you are pregnant, or you are on medicine that suppresses the immune system, or you have other concerning symptoms such as a severe headache, severe sore throat, rash, confusion, fits, pain when urinating, or severe neck pain.",
+      "source": "hh_fever"
+    },
+    {
       "id": "ulcer_when_doctor",
       "topic": "mouth_ulcer",
       "title": "When should I see a doctor for my mouth ulcer?",
@@ -268,7 +315,7 @@
         "scdf",
         "emergency"
       ],
-      "answer": "SCDF says call 995 only for emergencies, such as cardiac arrest, seizures, breathlessness, loss of consciousness, heavy bleeding, major injuries and stroke. A cough on its own is listed as a non-emergency.",
+      "answer": "SCDF says call 995 only for emergencies, such as cardiac arrest, seizures, breathlessness, loss of consciousness, heavy bleeding, major injuries and stroke. A cough on its own is listed as a non-emergency. If it gets worse, see a GP.",
       "source": "scdf_ems"
     },
     {

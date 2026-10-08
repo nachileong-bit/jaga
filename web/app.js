@@ -510,6 +510,7 @@ async function runTourStep(step) {
         () => sendMessage(null, "Correct"),
         () => advance((st && st.day ? st.day : 0) + 7),
         () => sendMessage(null, "Still got"),
+        () => sendMessage(null, "No"), // "Since we last spoke, any blood, breathlessness or chest pain?"
       );
       await runSteps(steps);
     } else if (step === 3) {

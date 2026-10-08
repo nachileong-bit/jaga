@@ -28,6 +28,11 @@ async function start(scenario: "mr_tan" | "ms_lim", symptomText = "cough a bit s
   await tap(sid, scenario === "mr_tan" ? "Add a trusted person" : "On my own");
   await say(sid, symptomText);
   await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
+  await tap(sid, "No");
   const state = await tap(sid, "No");
   return { sid, state };
 }
@@ -37,10 +42,12 @@ async function runToSeeGp(scenario: "mr_tan" | "ms_lim") {
   const { sid } = await start(scenario);
   await go(sid, 7);
   await tap(sid, "Still got");
+  await tap(sid, "No");
   await tap(sid, "Took medicine");
   await tap(sid, "Correct");
   await go(sid, 14);
-  const state = await tap(sid, "Still got");
+  await tap(sid, "Still got");
+  const state = await tap(sid, "No");
   return { sid, state };
 }
 

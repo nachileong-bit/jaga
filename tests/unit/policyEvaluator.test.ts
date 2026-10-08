@@ -24,7 +24,7 @@ const baseEpisode: Episode = {
   discordance: false,
   missedCheckins: 0,
   policyId: "cough",
-  policyVersion: "0.1.0",
+  policyVersion: "0.2.0",
 };
 
 describe("screenRedFlags (sticky)", () => {
@@ -37,7 +37,7 @@ describe("screenRedFlags (sticky)", () => {
     expect(screenRedFlags(obs, policy)).toBeNull();
   });
 
-  it("returns SEE_DOCTOR_TODAY when blood is reported", () => {
+  it("returns EMERGENCY_995 when blood is reported", () => {
     const obs: Observation[] = [
       {
         id: "o1",
@@ -50,7 +50,7 @@ describe("screenRedFlags (sticky)", () => {
     ];
     const result = screenRedFlags(obs, policy);
     expect(result).not.toBeNull();
-    expect(result!.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result!.action).toBe("EMERGENCY_995");
     expect(result!.redFlagKey).toBe("blood");
     expect(result!.reportedBy).toBe("user");
     expect(result!.reportedAt).toBe("2026-01-01");
@@ -138,7 +138,7 @@ describe("screenRedFlags (sticky)", () => {
     expect(result!.reportedBy).toBe("user");
   });
 
-  it("EMERGENCY_995 takes priority over SEE_DOCTOR_TODAY when both reported", () => {
+  it("EMERGENCY_995 takes priority when both blood and breathless reported", () => {
     const obs: Observation[] = [
       {
         id: "o1",
@@ -178,7 +178,15 @@ describe("hasUnscreenedRedFlags", () => {
         at: "2026-01-01",
         reporter: "user",
         kind: "redflag_answer",
-        redFlags: { blood: "denied", breathless_or_chest_pain: "denied" },
+        redFlags: {
+          blood: "denied",
+          breathless_or_chest_pain: "denied",
+          high_fever: "denied",
+          weight_loss: "denied",
+          night_sweats: "denied",
+          coloured_phlegm: "denied",
+          wheezing: "denied",
+        },
       },
     ];
     expect(hasUnscreenedRedFlags(obs, policy)).toBe(false);
@@ -217,7 +225,7 @@ describe("hasUnscreenedRedFlags", () => {
         redFlags: { blood: "denied" },
       },
     ];
-    expect(hasUnscreenedRedFlags(obs, policy)).toBe(true); // breathless still unanswered
+    expect(hasUnscreenedRedFlags(obs, policy)).toBe(true); // other red flags still unanswered
   });
 });
 
@@ -267,6 +275,18 @@ describe("evaluatePolicy", () => {
     expect(result.ruleId).toBe("long_duration");
   });
 
+  it("fires three_weeks_any at day 21 without self-treatment", () => {
+    clock.advanceToDay(21);
+    const episode: Episode = { ...baseEpisode, trajectory: "same" };
+    const obs: Observation[] = [
+      { id: "o1", episodeId: "e1", at: "2026-01-01", reporter: "user", kind: "mention", trajectory: "same" },
+      { id: "o2", episodeId: "e1", at: "2026-01-21", reporter: "user", kind: "checkin", trajectory: "same" },
+    ];
+    const result = evaluatePolicy(episode, obs, policy, clock);
+    expect(result.action).toBe("SEE_GP");
+    expect(result.ruleId).toBe("three_weeks_any");
+  });
+
   it("red flag overrides duration rules", () => {
     clock.advanceToDay(60);
     const episode: Episode = { ...baseEpisode, trajectory: "same" };
@@ -281,7 +301,7 @@ describe("evaluatePolicy", () => {
       },
     ];
     const result = evaluatePolicy(episode, obs, policy, clock);
-    expect(result.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result.action).toBe("EMERGENCY_995");
     expect(result.redFlagKey).toBe("blood");
   });
 
@@ -325,7 +345,7 @@ describe("evaluatePolicy", () => {
       },
     ];
     const result = evaluatePolicy(episode, obs, policy, clock);
-    expect(result.action).toBe("SEE_DOCTOR_TODAY");
+    expect(result.action).toBe("EMERGENCY_995");
     expect(result.redFlagKey).toBe("blood");
   });
 });

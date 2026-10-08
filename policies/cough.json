@@ -1,17 +1,51 @@
 {
   "id": "cough",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "status": "PENDING_CLINICIAN_REVIEW",
   "reviewer": null,
   "sources": [
     {
       "label": "HealthHub: Cough",
       "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/cough"
+    },
+    {
+      "label": "HealthHub: Tuberculosis",
+      "url": "https://www.healthhub.sg/a-z/diseases-and-conditions/tuberculosis"
+    },
+    {
+      "label": "MOH: Getting medical help",
+      "url": "https://www.moh.gov.sg/seeking-healthcare/getting-medical-help/"
     }
   ],
   "redFlags": [
-    { "key": "blood", "action": "SEE_DOCTOR_TODAY" },
-    { "key": "breathless_or_chest_pain", "action": "EMERGENCY_995" }
+    {
+      "key": "blood",
+      "action": "EMERGENCY_995"
+    },
+    {
+      "key": "breathless_or_chest_pain",
+      "action": "EMERGENCY_995"
+    },
+    {
+      "key": "high_fever",
+      "action": "SEE_GP"
+    },
+    {
+      "key": "weight_loss",
+      "action": "SEE_GP"
+    },
+    {
+      "key": "night_sweats",
+      "action": "SEE_GP"
+    },
+    {
+      "key": "coloured_phlegm",
+      "action": "SEE_GP"
+    },
+    {
+      "key": "wheezing",
+      "action": "SEE_GP"
+    }
   ],
   "rules": [
     {
@@ -19,7 +53,11 @@
       "when": {
         "minDurationDays": 14,
         "selfTreatment": true,
-        "trajectoryIn": ["same", "worse", "intermittent"]
+        "trajectoryIn": [
+          "same",
+          "worse",
+          "intermittent"
+        ]
       },
       "action": "SEE_GP",
       "explain": "Your cough has not improved after self-treatment for over two weeks. Consider seeing a GP.",
@@ -27,17 +65,38 @@
     },
     {
       "id": "worsening",
-      "when": { "trajectoryIn": ["worse"] },
+      "when": {
+        "trajectoryIn": [
+          "worse"
+        ]
+      },
       "action": "SEE_GP",
-      "explain": "Your cough is getting worse. Consider seeing a GP.",
+      "explain": "Please see a GP. Your cough is getting worse.",
       "sourceIndex": 0
     },
     {
       "id": "long_duration",
-      "when": { "minDurationDays": 56 },
+      "when": {
+        "minDurationDays": 56
+      },
       "action": "SEE_GP",
-      "explain": "Your cough has persisted for a long time. Consider seeing a GP to check underlying causes.",
+      "explain": "Please see a GP. Your cough has persisted for a long time.",
       "sourceIndex": 0
+    },
+    {
+      "id": "three_weeks_any",
+      "when": {
+        "minDurationDays": 21,
+        "trajectoryIn": [
+          "same",
+          "worse",
+          "intermittent",
+          "unknown"
+        ]
+      },
+      "action": "SEE_GP",
+      "explain": "Your cough has lasted more than three weeks. Please see a GP.",
+      "sourceIndex": 1
     }
   ],
   "checkinEveryDays": 7,

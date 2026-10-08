@@ -58,6 +58,12 @@ export const ONSET_BUTTON_MIN_DAYS: Record<string, number> = {
 export const RED_FLAG_QUESTIONS: Record<string, string> = {
   blood: "Have you noticed any blood when you cough?",
   breathless_or_chest_pain: "Have you felt breathless or had any chest pain?",
+  high_fever: "Have you had a fever above 38.6 degrees C?",
+  weight_loss: "Have you lost weight without trying?",
+  night_sweats: "Have you had night sweats?",
+  coloured_phlegm: "Have you coughed up thick yellow or green phlegm?",
+  wheezing: "Have you been wheezing?",
+  fever_or_rash: "Do you have a fever or a rash?",
 };
 
 export const YES_NO: string[] = ["Yes", "No"];
@@ -70,6 +76,9 @@ export const CLOCK_STARTED = (everyDays: number) =>
 export const CHECKIN_BUTTONS: string[] = ["Still got", "Better", "Gone"];
 
 export const checkinMessage = () => `👋 Still coughing? ${ESCAPE_HATCH}`;
+
+export const CHECKIN_FOLLOWUP =
+  "Since we last spoke, any blood when you cough, breathlessness or chest pain?";
 
 export const CHECKIN_ACK_SAME = `Understood. I'll keep counting. ${ESCAPE_HATCH}`;
 export const CHECKIN_ACK_BETTER = `Good to hear. I'll keep counting in case it comes back. ${ESCAPE_HATCH}`;
@@ -89,23 +98,37 @@ export const SELF_TREATMENT_NOT_RIGHT =
 
 // ---- Red flags ----
 
+// Warning-sign display names for the "see a GP soon" messages.
+const WARNING_SIGN_NAMES: Record<string, string> = {
+  high_fever: "a fever above 38.6 degrees C",
+  weight_loss: "weight loss",
+  night_sweats: "night sweats",
+  coloured_phlegm: "thick yellow or green phlegm",
+  wheezing: "wheezing",
+  fever_or_rash: "a fever or rash",
+};
+
 export function redFlagMessage(action: ActionType, key: string): string {
   if (action === "EMERGENCY_995") {
+    if (key === "blood") {
+      return "Coughing up blood can be serious. Go to the nearest emergency department now. If there is a lot of blood or you are breathless, call 995.";
+    }
     return "Breathlessness or chest pain can be an emergency. Call 995 now.";
   }
   if (key === "blood") {
-    return "Coughing up blood should be checked by a doctor today, even if you feel okay.";
+    return "Coughing up blood can be serious. Go to the nearest emergency department now. If there is a lot of blood or you are breathless, call 995.";
   }
-  return "This should be checked by a doctor today.";
+  const signName = WARNING_SIGN_NAMES[key] ?? key.replace(/_/g, " ");
+  return `With a cough, HealthHub says ${signName} should be checked by a doctor. Please see a GP in the next day or two.`;
 }
 
 export const RED_FLAG_DENY_REPLY = (key: string) => {
-  const name = key === "blood" ? "blood" : "breathlessness or chest pain";
-  const advice = key === "blood" ? "please see a doctor today" : "please call 995";
+  const name = key === "blood" ? "blood when coughing" : key === "breathless_or_chest_pain" ? "breathlessness or chest pain" : key.replace(/_/g, " ");
+  const advice = key === "blood" || key === "breathless_or_chest_pain" ? "please go to the nearest emergency department or call 995" : "please see a GP";
   return `Thanks for telling me. Because ${name} was mentioned earlier, my advice stays the same: ${advice}.`;
 };
 
-export const RED_FLAG_REMINDER = "My earlier advice stands: please get this checked by a doctor today.";
+export const RED_FLAG_REMINDER = "My earlier advice still stands. Please get this checked as I said before.";
 
 export const SUPPORT_URGENT_TEXT = (userName: string) =>
   `${userName} told Jaga about a warning sign that should be checked by a doctor today. Please check in with them.`;
@@ -123,7 +146,7 @@ export const CLARIFY_ACK = `Thanks, noted. ${ESCAPE_HATCH}`;
 // ---- Care navigation ----
 
 export const SEE_GP_INTRO = (minDays: number) =>
-  `You've been dealing with this for at least ${minDays} days. That is long enough that it should be checked. Most of the time it is nothing serious.`;
+  `You've been dealing with this for at least ${minDays} days. That is long enough that it should be checked. A doctor can check what is going on.`;
 
 export const SEE_GP_WHY = (explain: string) => `Why I'm saying this: ${explain}`;
 

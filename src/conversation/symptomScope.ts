@@ -55,6 +55,41 @@ const EMERGENCY_PATTERNS: RegExp[] = [
 const NEGATION_PATTERN =
   /\b(no|not|never|didn'?t|don'?t|doesn'?t|haven'?t|hasn'?t|without|nope)\b/i;
 
+// Non-cough symptom words. When the clock is running and the user mentions
+// one of these without a cough word, Jaga says NOT_COVERED_YET.
+const NON_COUGH_SYMPTOM_PATTERNS: RegExp[] = [
+  /\bfever\b/i,
+  /\bcut\b/i,
+  /\brash\b/i,
+  /\bswell(ing|en)?\b/i,
+  /\bheadache\b/i,
+  /\bdizz(y|iness)\b/i,
+  /\bvomit(ing)?\b/i,
+  /\bdiarrh(ea|oea)\b/i,
+  /\bsore\s+throat\b/i,
+  /\bn?stomach\s+(ache|pain|cramp)\b/i,
+  /\babdominal\s+pain\b/i,
+  /\bnausea\b/i,
+  /\bsprain\b/i,
+  /\bburn\b/i,
+  /\bwound\b/i,
+  /\blump\b/i,
+  /\bbump\b/i,
+  /\bbleed(ing)?\b/i, // "bleeding" without a cough mention
+];
+
+export function isNonCoughSymptom(text: string): boolean {
+  return NON_COUGH_SYMPTOM_PATTERNS.some((re) => re.test(text));
+}
+
+/** Detect "fever" with no temperature number. */
+export function isFeverWithoutNumber(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (!/\bfever\b/.test(lower)) return false;
+  // Check if there's a number after "fever" (e.g. "fever 38.5")
+  return !/\bfever\s+\d{2}(\.\d+)?\b/.test(lower) && !/\btemperature\s+\d{2}(\.\d+)?\b/.test(lower);
+}
+
 export function isCoughMention(text: string): boolean {
   return COUGH_PATTERNS.some((re) => re.test(text));
 }

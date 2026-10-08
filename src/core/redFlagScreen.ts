@@ -110,6 +110,7 @@ export function screenRedFlags(
     policyId: policy.id,
     policyVersion: policy.version,
     source: policy.sources[0],
+    explain: best.rf.explain,
     reportedBy: best.report.reporter,
     reportedAt: best.report.at,
   };

@@ -2,7 +2,7 @@
 // Tests for the ScriptedExtractor that stands in for the LLM until M3.
 
 import { describe, it, expect } from "vitest";
-import { ScriptedExtractor } from "../../src/llm/ScriptedExtractor.js";
+import { ScriptedExtractor, extractOnset } from "../../src/llm/ScriptedExtractor.js";
 
 const extractor = new ScriptedExtractor();
 
@@ -54,8 +54,15 @@ describe("ScriptedExtractor", () => {
     expect(rf!.redFlags!.blood).toBe("reported");
   });
 
-  it('maps "no lah" → deny blood', () => {
+  it('"no lah" does NOT deny blood (no blood keyword present)', () => {
     const result = extractor.extract({ text: "no lah" });
+    const rf = result.find((r) => r.kind === "redflag_answer");
+    // "no lah" has no blood keyword, so no redflag_answer should be produced
+    expect(rf).toBeUndefined();
+  });
+
+  it('maps "no blood" → deny blood', () => {
+    const result = extractor.extract({ text: "no blood lah" });
     const rf = result.find((r) => r.kind === "redflag_answer");
     expect(rf).toBeDefined();
     expect(rf!.redFlags!.blood).toBe("denied");
@@ -105,6 +112,7 @@ describe("warning signs in free text", () => {
     "got blood in my phlegm",
     "blood when I cough",
     "pink frothy phlegm",
+    "batuk darah", // Malay
   ])("reports blood: %s", (t) => expect(flags(t).blood).toBe("reported"));
   it.each(["no blood", "didn't see any blood"])("denies blood: %s", (t) =>
     expect(flags(t).blood).toBe("denied")
@@ -120,4 +128,94 @@ describe("warning signs in free text", () => {
   it.each(["no chest pain", "not short of breath"])("does not report a denial: %s", (t) =>
     expect(flags(t).breathless_or_chest_pain).toBeUndefined()
   );
+
+  // "not breathless but chest pain" must still report breathless_or_chest_pain
+  it('reports breathless_or_chest_pain for "not breathless but chest pain"', () => {
+    expect(flags("not breathless but chest pain").breathless_or_chest_pain).toBe("reported");
+  });
+
+  // New "see a GP soon" warning signs
+  it.each(["I have a high fever", "fever 39 degrees", "temperature above 38.6"])(
+    "reports high_fever: %s",
+    (t) => expect(flags(t).high_fever).toBe("reported")
+  );
+  it("does not report high_fever for fever 38.0", () => {
+    expect(flags("fever 38.0").high_fever).toBeUndefined();
+  });
+  it.each(["I've been losing weight", "lost some weight recently"])(
+    "reports weight_loss: %s",
+    (t) => expect(flags(t).weight_loss).toBe("reported")
+  );
+  it.each(["sweating at night", "night sweats"])(
+    "reports night_sweats: %s",
+    (t) => expect(flags(t).night_sweats).toBe("reported")
+  );
+  it.each(["yellow phlegm", "thick green phlegm"])(
+    "reports coloured_phlegm: %s",
+    (t) => expect(flags(t).coloured_phlegm).toBe("reported")
+  );
+  it.each(["I'm wheezing", "wheezy chest"])(
+    "reports wheezing: %s",
+    (t) => expect(flags(t).wheezing).toBe("reported")
+  );
+});
+
+describe("onset parsing", () => {
+  it("parses 'since last week'", () => {
+    const m = extractOnset("since last week");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("since last week");
+  });
+
+  it("parses 'a week ago'", () => {
+    const m = extractOnset("started about a week ago");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("about a week ago");
+  });
+
+  it("parses '2 weeks'", () => {
+    const m = extractOnset("cough for 2 weeks");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("2 weeks");
+  });
+
+  it("parses '3 weeks'", () => {
+    const m = extractOnset("3 weeks already");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("3 weeks");
+  });
+
+  it("parses 'three weeks'", () => {
+    const m = extractOnset("cough for three weeks");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("three weeks");
+  });
+
+  it("parses '1 month'", () => {
+    const m = extractOnset("cough for 1 month");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("1 month");
+  });
+
+  it("parses 'since last month'", () => {
+    const m = extractOnset("cough since last month");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("since last month");
+  });
+
+  it("parses 'a few days'", () => {
+    const m = extractOnset("cough for a few days");
+    expect(m).not.toBeNull();
+    expect(m!.rawText).toBe("a few days");
+  });
+
+  it("parses 'before CNY'", () => {
+    const m = extractOnset("cough since before CNY");
+    expect(m).not.toBeNull();
+    expect(m!.rawText.toLowerCase()).toBe("since before cny");
+  });
+
+  it("returns null for no onset phrase", () => {
+    expect(extractOnset("hello there")).toBeNull();
+  });
 });
