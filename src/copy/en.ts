@@ -189,3 +189,11 @@ export const KB_NO_DIAGNOSIS =
   "I can't tell you what is causing it. Only a doctor can. What I can do is keep count of how long it has gone on and tell you when it is time to get it checked.";
 
 export const KB_FOOTER = "Not a diagnosis.";
+
+// ---- Unsupported symptoms and emergencies (prompt 06) ----
+
+export const NOT_COVERED_YET =
+  "Right now I can only keep count for a cough that won't go away. Other symptoms, like fever, cuts or swelling, aren't covered yet, so I won't guess. If you're worried, a GP or pharmacist can help, and the NurseFirst helpline is 6262 6262 for advice that is not an emergency. If it's an emergency, call 995. Is there a cough you'd like me to keep count of?";
+
+export const EMERGENCY_NOW =
+  "That sounds like it could be an emergency. Call 995 now, or go to the nearest emergency department.";

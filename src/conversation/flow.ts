@@ -26,6 +26,7 @@ import * as copy from "../copy/en.js";
 import { CLINICS, type ClinicCard } from "../navigation/prototypeData.js";
 import { buildSummary, type GpSummary } from "../navigation/summary.js";
 import { isQuestion, isDiagnosisQuestion, searchKnowledge } from "../knowledge/kb.js";
+import { isCoughMention, isEmergencyMention } from "./symptomScope.js";
 import type {
   ClockPanelState,
   DemoState,
@@ -212,6 +213,13 @@ export class DemoSession {
       return this.getState();
     }
 
+    // Prompt 06: emergency signs are always caught first, even before an episode.
+    if (!this.episode && params.text && isEmergencyMention(params.text)) {
+      this.say(copy.EMERGENCY_NOW);
+      this.runTodo();
+      return this.getState();
+    }
+
     await this.route(params);
     this.runTodo();
     return this.getState();
@@ -311,6 +319,13 @@ export class DemoSession {
   private async onSymptom(params: ProcessMessageParams): Promise<void> {
     const text = (params.text ?? params.button ?? "").trim();
     if (!text) return;
+
+    // Prompt 06: only track a cough. For anything else, say so plainly.
+    if (!isCoughMention(text)) {
+      this.say(copy.NOT_COVERED_YET);
+      this.pending = "symptom";
+      return;
+    }
 
     const onsetMatch = extractOnset(text);
     const onset: Episode["onset"] = onsetMatch
