@@ -10,7 +10,7 @@ export const ESCAPE_HATCH = "You can seek medical care at any time if you're con
 // ---- Opening / mode selection ----
 
 export const GREETING =
-  "Hello, I'm Jaga. I help you keep track of symptoms that drag on, and help you get care when it is time. 🐾";
+  "Hello, I'm Jaga 🐾 I keep count of a cough that won't go away, and tell you when it's time to see a GP. Right now I only cover cough. I'm not a doctor and I don't diagnose.";
 
 export const MODE_QUESTION =
   "Would you like to do this on your own, or have someone you trust in the loop?";
@@ -31,7 +31,7 @@ export const MODE_NO_SUPPORT_IN_SCENARIO =
 
 // ---- Symptom mention and onset ----
 
-export const ASK_SYMPTOM = "What's bothering you? Tell me in your own words.";
+export const ASK_SYMPTOM = "Tell me about your cough, in your own words. For example: \"cough 3 weeks, got phlegm\". Other symptoms aren't covered yet.";
 
 export const SYMPTOM_ACKNOWLEDGED = (rawText: string, minDays: number) =>
   `Noted: "${rawText}". That is at least ${minDays} day${minDays === 1 ? "" : "s"}. I'll count from there.`;

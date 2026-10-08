@@ -24,14 +24,16 @@ td.day{white-space:nowrap;width:70px;font-weight:600}
 ul{padding-left:20px}
 .footer{margin-top:24px;padding-top:12px;border-top:2px solid #14231d;font-weight:700}
 .note{font-size:13.5px;color:#5a6963;margin-top:6px}
-.actions{max-width:800px;margin:0 auto 14px;display:flex;gap:10px}
+.actions{max-width:800px;margin:0 auto 14px;display:flex;gap:10px;align-items:center}
+.back-link{font:inherit;font-weight:600;color:#0f6b57;text-decoration:none;padding:8px 0;white-space:nowrap}
+.back-link:hover{text-decoration:underline}
 button{font:inherit;padding:8px 16px;border-radius:8px;border:1px solid #0f6b57;background:#0f6b57;color:#fff;font-weight:600;cursor:pointer}
 @media print{body{background:#fff;padding:0}.page{border:0;padding:0}.actions{display:none}}
 @media (max-width:560px){.kv{grid-template-columns:1fr}.page{padding:20px 16px}}
 </style>
 </head>
 <body>
-<div class="actions"><button onclick="window.print()">Print or save as PDF</button></div>
+<div class="actions"><a href="/web/" class="back-link">&larr; Back to the demo</a><button onclick="window.print()">Print or save as PDF</button></div>
 <div class="page" id="page"><p>Loading...</p></div>
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

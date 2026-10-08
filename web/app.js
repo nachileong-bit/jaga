@@ -2,9 +2,13 @@
 
 const API = "/api";
 let sessionId = null;
+let lastState = null; // newest state from the server, used by the tour
 let currentDay = 0;
 let scenarioMode = "supported";
 let isMeiLing = false;
+
+// Scope card state: full on every reload, collapses after first interaction.
+let scopeCardCollapsed = false;
 
 // ---- DOM elements ----
 
@@ -12,6 +16,8 @@ const chatBody = document.getElementById("chat-body");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
 const clockContent = document.getElementById("clock-content");
+const clockSimDateRow = document.getElementById("clock-simdate-row");
+const clockSimDate = document.getElementById("clock-simdate");
 const daySlider = document.getElementById("day-slider");
 const dayValue = document.getElementById("day-value");
 const scenarioSelect = document.getElementById("scenario-select");
@@ -19,6 +25,10 @@ const resetBtn = document.getElementById("reset-btn");
 const nextCheckinBtn = document.getElementById("next-checkin-btn");
 const meiLingToggle = document.getElementById("mei-ling-toggle");
 const contactName = document.getElementById("contact-name");
+const contactStatus = document.getElementById("contact-status");
+const quickButtons = document.getElementById("quick-buttons");
+const tourButtons = document.getElementById("tour-buttons");
+const clockToggleBtn = document.getElementById("clock-toggle-btn");
 
 // ---- API calls ----
 
@@ -73,6 +83,7 @@ async function sendMessage(text, button, reporter) {
     reporter: reporter || (isMeiLing ? "support_person" : "user"),
   });
   if (!data) return;
+  collapseScopeCard();
   renderState(data.state);
 }
 
@@ -86,9 +97,58 @@ async function advance(toDay) {
   renderState(data.state);
 }
 
+// ---- Scope card ----
+
+function buildScopeCardElement() {
+  const card = document.createElement("div");
+  card.className = "scope-card";
+  card.innerHTML = `
+    <div class="scope-card-title">Try Jaga (hackathon prototype)</div>
+    <div class="scope-card-body">
+      <p>Covered now: a cough that won't go away.</p>
+      <p>Coming next, after a doctor checks the rules: fever, mouth ulcer.</p>
+      <p>Anything else, Jaga will say it can't help yet. It won't guess.</p>
+      <p class="scope-card-emergency">Jaga is not a doctor and never diagnoses. Emergency? Call 995.</p>
+    </div>
+    <div class="scope-card-actions">
+      <button class="scope-card-tour-btn">Start the 1-minute tour</button>
+      <button class="scope-card-close-btn">x</button>
+    </div>
+  `;
+  card.querySelector(".scope-card-tour-btn").onclick = () => {
+    collapseScopeCard();
+    runTourStep(1);
+  };
+  card.querySelector(".scope-card-close-btn").onclick = () => {
+    collapseScopeCard();
+  };
+  return card;
+}
+
+function buildScopeCardPill() {
+  const pill = document.createElement("div");
+  pill.className = "scope-card-pill";
+  pill.innerHTML = `<span>Covered: cough only</span> <button class="scope-pill-tour">Tour</button>`;
+  pill.querySelector(".scope-pill-tour").onclick = () => {
+    scopeCardCollapsed = false;
+    renderTranscript(lastTranscript);
+  };
+  return pill;
+}
+
+let lastTranscript = [];
+
+function collapseScopeCard() {
+  if (!scopeCardCollapsed) {
+    scopeCardCollapsed = true;
+    renderTranscript(lastTranscript);
+  }
+}
+
 // ---- Rendering ----
 
 function renderState(state) {
+  lastState = state;
   if (!state) return;
   currentDay = state.day;
   scenarioMode = state.mode;
@@ -101,12 +161,35 @@ function renderState(state) {
   // Update contact name
   contactName.textContent = "Jaga";
 
+  // Update simDate in clock panel
+  if (state.simDate) {
+    const d = new Date(state.simDate);
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const formatted = `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    clockSimDate.textContent = formatted;
+    clockSimDateRow.style.display = "flex";
+  }
+
+  // Enable tour step 4 after clock started
+  const clockStarted = state.clockPanel && state.clockPanel.symptom;
+  document.querySelectorAll('[data-tour="4"]').forEach((b) => { b.disabled = !clockStarted || tourRunning; });
+
   renderTranscript(state.transcript);
   renderClockPanel(state.clockPanel);
 }
 
 function renderTranscript(transcript) {
+  lastTranscript = transcript;
   chatBody.innerHTML = "";
+
+  // Scope card or pill at the very top
+  if (scopeCardCollapsed) {
+    chatBody.appendChild(buildScopeCardPill());
+  } else {
+    chatBody.appendChild(buildScopeCardElement());
+  }
+
   let lastDay = -1;
 
   for (const entry of transcript) {
@@ -205,8 +288,58 @@ function renderTranscript(transcript) {
     chatBody.appendChild(msg);
   }
 
+  // Render suggested-reply chips or normal quick buttons
+  renderQuickArea(transcript);
+
   // Scroll to bottom
-  chatBody.scrollTop = chatBody.scrollHeight;
+  // Until the person says something, keep the scope card at the top in view.
+  chatBody.scrollTop = transcript.some((t) => t.role !== "jaga") ? chatBody.scrollHeight : 0;
+}
+
+// ---- Suggested-reply chips ----
+
+const ASK_SYMPTOM_TEXT = "Tell me about your cough, in your own words. For example: \"cough 3 weeks, got phlegm\". Other symptoms aren't covered yet.";
+
+function renderQuickArea(transcript) {
+  const jagaMsgs = transcript.filter((t) => t.role === "jaga" && !t.sticker);
+  const lastJaga = jagaMsgs[jagaMsgs.length - 1];
+  const isAskSymptom = lastJaga && lastJaga.text === ASK_SYMPTOM_TEXT;
+
+  quickButtons.innerHTML = "";
+
+  if (isAskSymptom) {
+    const chips = [
+      { text: "Cough 3 weeks already, got phlegm", tag: null },
+      { text: "Cough on and off since last month", tag: null },
+      { text: "I have a fever", tag: "not covered" },
+      { text: "Cut my finger", tag: "not covered" },
+    ];
+    for (const chip of chips) {
+      const btn = document.createElement("button");
+      btn.className = "chip-btn" + (chip.tag ? " chip-not-covered" : "");
+      btn.textContent = chip.text;
+      if (chip.tag) {
+        const tag = document.createElement("span");
+        tag.className = "chip-tag";
+        tag.textContent = chip.tag;
+        btn.appendChild(tag);
+      }
+      btn.onclick = () => sendMessage(chip.text, null);
+      quickButtons.appendChild(btn);
+    }
+  } else {
+    const b1 = document.createElement("button");
+    b1.className = "quick-btn";
+    b1.textContent = "Took medicine";
+    b1.onclick = () => sendMessage(null, "Took medicine");
+    quickButtons.appendChild(b1);
+
+    const b2 = document.createElement("button");
+    b2.className = "quick-btn";
+    b2.textContent = "Noticed blood";
+    b2.onclick = () => sendMessage(null, "Noticed blood");
+    quickButtons.appendChild(b2);
+  }
 }
 
 function renderClockPanel(panel) {
@@ -216,6 +349,9 @@ function renderClockPanel(panel) {
   }
 
   const rows = [];
+
+  // Keep the simDate row at the top (it is a separate element outside clockContent)
+  // The rest of the rows go into clockContent.
 
   rows.push(clockRow("Mode", panel.mode));
   rows.push(clockRow("Symptom", panel.symptom ?? "-", !panel.symptom));
@@ -284,6 +420,180 @@ function dayOf(iso) {
   return Math.floor((t - start) / 86400000);
 }
 
+// ---- Judge tour ----
+
+const tourSteps = {
+  1: { hint: "" },
+  2: { hint: "The cough started a week before day 0, so demo day 7 = cough day 14." },
+  3: { hint: "" },
+  4: { hint: "" },
+  5: { hint: "" },
+  6: { hint: "Then tap Yes to the next question to see the 995 reply." },
+};
+
+let tourRunning = false;
+function setTourButtonsEnabled(enabled) {
+  tourRunning = !enabled;
+  const st = lastState;
+  const clockStarted = !!(st && st.clockPanel && st.clockPanel.symptom);
+  document.querySelectorAll(".tour-btn, .tour-pill").forEach((btn) => {
+    const step = parseInt(btn.getAttribute("data-tour"), 10);
+    // Step 4 (ask a question) only makes sense once the clock has started.
+    btn.disabled = !enabled || (step === 4 && !clockStarted);
+  });
+}
+
+function showTourTyping() {
+  contactStatus.textContent = "typing...";
+}
+
+function restoreContactStatus() {
+  contactStatus.textContent = "online";
+}
+
+function tickTourStep(step) {
+  const btn = tourButtons.querySelector(`[data-tour="${step}"]`);
+  if (btn) {
+    btn.classList.add("tour-done");
+    btn.textContent = btn.textContent + " ✓";
+  }
+  const pill = document.querySelector(`.tour-pill[data-tour="${step}"]`);
+  if (pill) {
+    pill.classList.add("tour-done");
+  }
+}
+
+async function runSteps(steps) {
+  for (const s of steps) {
+    await s();
+  }
+}
+
+function scrollChatIntoView() {
+  const phoneFrame = document.querySelector(".phone-frame");
+  if (phoneFrame) {
+    phoneFrame.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function showTourHint(step, text) {
+  const el = document.getElementById(`tour-hint-${step}`);
+  if (el && text) {
+    el.textContent = text;
+    el.style.display = "block";
+  }
+}
+
+async function runTourStep(step) {
+  setTourButtonsEnabled(false);
+  showTourTyping();
+
+  try {
+    if (step === 1) {
+      await runSteps([
+        () => { scenarioSelect.value = "mr_tan"; return reset("mr_tan"); },
+        () => sendMessage(null, "Add a trusted person"),
+      ]);
+    } else if (step === 2) {
+      // Intake only if the clock has not started yet, then one check-in reaches day 14 of the cough.
+      const st = getSessionState();
+      const started = st && st.clockPanel && st.clockPanel.symptom;
+      const steps = started ? [] : [
+        () => sendMessage("cough", null),
+        () => sendMessage(null, "About a week ago"),
+        () => sendMessage(null, "No"),
+        () => sendMessage(null, "No"),
+      ];
+      steps.push(
+        () => sendMessage(null, "Took medicine"),
+        () => sendMessage(null, "Correct"),
+        () => advance((st && st.day ? st.day : 0) + 7),
+        () => sendMessage(null, "Still got"),
+      );
+      await runSteps(steps);
+    } else if (step === 3) {
+      await runSteps([
+        () => sendMessage(null, "Book appointment"),
+      ]);
+      // Open newest GP summary link in a new tab
+      setTimeout(() => {
+        const link = document.querySelector('.msg-link[href*="summary.html"]');
+        if (link) {
+          window.open(link.href, "_blank");
+        }
+      }, 500);
+    } else if (step === 4) {
+      await runSteps([
+        () => sendMessage("Which cough medicine should I take?", null),
+      ]);
+    } else if (step === 5) {
+      await runSteps([
+        () => { scenarioSelect.value = "mr_tan"; return reset("mr_tan"); },
+        () => sendMessage(null, "Add a trusted person"),
+        () => sendMessage("I have a fever", null),
+      ]);
+    } else if (step === 6) {
+      await runSteps([
+        () => { scenarioSelect.value = "ms_lim"; return reset("ms_lim"); },
+        () => sendMessage(null, "On my own"),
+        () => sendMessage("cough", null),
+        () => sendMessage(null, "A few days ago"),
+        () => sendMessage(null, "Yes"),
+      ]);
+    }
+    tickTourStep(step);
+  } catch (e) {
+    console.error("Tour step error:", e);
+  }
+
+  restoreContactStatus();
+
+  // Re-enable tour buttons: step 4 depends on clock started
+  setTourButtonsEnabled(true);
+
+  // Show hints for steps 2 and 6
+  const hintMap = { 2: tourSteps[2].hint, 6: tourSteps[6].hint };
+  if (hintMap[step]) showTourHint(step, hintMap[step]);
+
+  scrollChatIntoView();
+}
+
+// Fetch current session state for re-enabling buttons
+function getSessionState() {
+  return lastState;
+}
+
+// Tour button event handlers
+document.querySelectorAll(".tour-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const step = parseInt(btn.getAttribute("data-tour"), 10);
+    collapseScopeCard();
+    runTourStep(step);
+  });
+});
+
+document.querySelectorAll(".tour-pill").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const step = parseInt(btn.getAttribute("data-tour"), 10);
+    collapseScopeCard();
+    runTourStep(step);
+  });
+});
+
+// Clock toggle (mobile)
+clockToggleBtn.addEventListener("click", () => {
+  const content = document.getElementById("clock-content");
+  const isHidden = content.style.display === "none";
+  if (isHidden) {
+    content.style.display = "";
+    clockToggleBtn.textContent = "Hide Jaga Clock";
+  } else {
+    content.style.display = "none";
+    clockToggleBtn.textContent = "Show Jaga Clock";
+  }
+});
+
 // ---- Event handlers ----
 
 sendBtn.addEventListener("click", () => {
@@ -333,14 +643,6 @@ nextCheckinBtn.addEventListener("click", () => {
 meiLingToggle.addEventListener("change", (e) => {
   isMeiLing = e.target.checked;
   chatInput.placeholder = isMeiLing ? "Type as Mei Ling..." : "Type a message...";
-});
-
-// Quick buttons
-document.querySelectorAll(".quick-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const button = btn.getAttribute("data-button");
-    sendMessage(null, button);
-  });
 });
 
 // ---- Initialize ----

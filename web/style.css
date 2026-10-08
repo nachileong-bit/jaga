@@ -518,3 +518,320 @@ body {
   background: #f6efe2;
   border: 2px solid rgba(255, 255, 255, 0.6);
 }
+
+/* ---- Scope card (pinned at top of chat) ---- */
+
+.scope-card {
+  align-self: center;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-width: 92%;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #5d4a00;
+}
+
+.scope-card-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.scope-card-body p {
+  margin: 3px 0;
+}
+
+.scope-card-emergency {
+  font-weight: 600;
+  color: #b3261e;
+}
+
+.scope-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.scope-card-tour-btn {
+  background: #075e54;
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scope-card-tour-btn:hover {
+  opacity: 0.9;
+}
+
+.scope-card-close-btn {
+  background: transparent;
+  border: 1px solid #ffe082;
+  color: #5d4a00;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.scope-card-close-btn:hover {
+  background: #ffe082;
+}
+
+.scope-card-pill {
+  align-self: center;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  color: #5d4a00;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scope-pill-tour {
+  background: #075e54;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.scope-pill-tour:hover {
+  opacity: 0.9;
+}
+
+/* ---- Tour panel ---- */
+
+.tour-panel {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tour-panel h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.tour-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tour-btn {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tour-btn:hover:not(:disabled) {
+  background: #f0f7f5;
+}
+
+.tour-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tour-btn.tour-done {
+  background: #e8f5e9;
+  border-color: #81c784;
+}
+
+.tour-hint {
+  display: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 12px 4px;
+  line-height: 1.4;
+}
+
+/* ---- Tour strip (mobile) ---- */
+
+.tour-strip {
+  display: none;
+}
+
+/* ---- Chips ---- */
+
+.quick-buttons {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.chip-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 8px 14px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 18px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip-btn:hover {
+  background: var(--bg);
+}
+
+.chip-not-covered {
+  color: var(--text-muted);
+}
+
+.chip-tag {
+  font-size: 10px;
+  background: #e0e0e0;
+  color: #666;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* ---- Clock panel additions ---- */
+
+.panel-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.badge.covered {
+  background: #0f6b57;
+  color: #fff;
+}
+
+.clock-simdate {
+  border-bottom: 2px solid #075e54 !important;
+  font-weight: 600;
+}
+
+.clock-simdate .clock-value {
+  font-weight: 600;
+}
+
+.clock-toggle {
+  display: none;
+}
+
+#clock-toggle-btn {
+  display: none;
+}
+
+/* ---- Manual controls heading ---- */
+
+.manual-controls-heading {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 768px) {
+  #app {
+    flex-direction: column;
+    padding: 8px;
+    gap: 12px;
+  }
+
+  .phone-frame {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 70vh;
+  }
+
+  .side-panel {
+    width: 100%;
+  }
+
+  .clock-panel {
+    max-height: none;
+  }
+
+  /* Tour becomes sticky horizontal strip */
+  .tour-strip {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 8px 8px;
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .tour-pill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 8px 12px;
+    min-height: 40px;
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+  }
+
+  .tour-pill:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .tour-pill.tour-done {
+    background: #e8f5e9;
+    border-color: #81c784;
+  }
+
+  /* Hide the desktop tour panel on mobile */
+  .tour-panel {
+    display: none;
+  }
+
+  /* Clock panel collapses behind toggle */
+  .clock-toggle {
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  #clock-toggle-btn {
+    display: inline-block;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  #clock-content {
+    display: none;
+  }
+}

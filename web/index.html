@@ -8,6 +8,16 @@
   <link rel="icon" href="/web/brand/jaga-avatar.png" />
 </head>
 <body>
+  <!-- Mobile: sticky tour strip -->
+  <div class="tour-strip" id="tour-strip">
+    <button class="tour-pill" data-tour="1">1 Start</button>
+    <button class="tour-pill" data-tour="2">2 Day 14</button>
+    <button class="tour-pill" data-tour="3">3 GP summary</button>
+    <button class="tour-pill" data-tour="4">4 Ask</button>
+    <button class="tour-pill" data-tour="5">5 Not covered</button>
+    <button class="tour-pill" data-tour="6">6 Warning</button>
+  </div>
+
   <div id="app">
     <!-- Left: Phone-frame chat -->
     <div class="phone-frame">
@@ -41,17 +51,47 @@
 
     <!-- Right: Jaga Clock panel + controls -->
     <div class="side-panel">
+      <!-- Judge tour panel -->
+      <div class="tour-panel">
+        <h3>1-minute tour</h3>
+        <div class="tour-buttons" id="tour-buttons">
+          <button class="tour-btn" data-tour="1">1. Start as Mr Tan</button>
+          <div class="tour-hint" id="tour-hint-1"></div>
+          <button class="tour-btn" data-tour="2">2. Skip to the day-14 nudge</button>
+          <div class="tour-hint" id="tour-hint-2"></div>
+          <button class="tour-btn" data-tour="3">3. Book and see the GP summary</button>
+          <div class="tour-hint" id="tour-hint-3"></div>
+          <button class="tour-btn" data-tour="4" disabled>4. Ask a question</button>
+          <div class="tour-hint" id="tour-hint-4"></div>
+          <button class="tour-btn" data-tour="5">5. Try something not covered</button>
+          <div class="tour-hint" id="tour-hint-5"></div>
+          <button class="tour-btn" data-tour="6">6. Try a warning sign</button>
+          <div class="tour-hint" id="tour-hint-6"></div>
+        </div>
+      </div>
+
       <div class="clock-panel">
         <div class="panel-header">
           <h2>Jaga Clock</h2>
-          <span class="badge pending">PENDING CLINICIAN REVIEW</span>
+          <div class="panel-badges">
+            <span class="badge covered">COVERED: COUGH</span>
+            <span class="badge pending">PENDING CLINICIAN REVIEW</span>
+          </div>
+        </div>
+        <div class="clock-toggle" id="clock-toggle">
+          <button id="clock-toggle-btn">Show Jaga Clock</button>
         </div>
         <div class="clock-content" id="clock-content">
+          <div class="clock-row clock-simdate" id="clock-simdate-row" style="display:none">
+            <span class="clock-label">Today (demo date)</span>
+            <span class="clock-value" id="clock-simdate">-</span>
+          </div>
           <p class="placeholder">Start a scenario to see the clock.</p>
         </div>
       </div>
 
       <div class="controls-panel">
+        <h3 class="manual-controls-heading">Manual controls</h3>
         <div class="control-group">
           <label for="scenario-select">Scenario</label>
           <select id="scenario-select">

@@ -152,6 +152,7 @@ export class DemoSession {
       transcript: [...this.transcript],
       clockPanel: this.buildClockPanel(),
       lastResult: this.lastResult,
+      simDate: this.clock.now(),
     };
   }
 

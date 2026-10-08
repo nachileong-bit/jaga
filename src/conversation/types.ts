@@ -67,6 +67,7 @@ export interface DemoState {
   transcript: TranscriptEntry[];
   clockPanel: ClockPanelState;
   lastResult: PolicyResult | null;
+  simDate: string;
 }
 
 export interface ProcessMessageParams {
