@@ -260,7 +260,7 @@ describe("Major 4: emergency words on every message", () => {
 
 // ============================================================= Major 5
 describe("Major 5: trusted person attribution", () => {
-  it("when support person reports a warning sign, share text says support name told Jaga", async () => {
+  it("when the support person reports a warning sign, they are not sent an alert about their own report", async () => {
     const sid = fresh("mr_tan");
     await tap(sid, "Add a trusted person");
     await say(sid, DEFAULT_SYMPTOM);
@@ -269,10 +269,9 @@ describe("Major 5: trusted person attribution", () => {
     // Now monitoring. Support person reports blood.
     const state = await say(sid, "he's coughing up blood", "support_person");
     const sent = getSession(sid)!.getSentToSupport();
-    const urgent = sent.find((s) => s.urgent);
-    expect(urgent).toBeDefined();
-    expect(urgent!.text).toContain("Mei Ling told Jaga");
-    expect(urgent!.text).not.toContain("Mr Tan told Jaga");
+    expect(sent.find((s) => s.urgent)).toBeUndefined();
+    // The warning sign is still recorded as reported by the trusted person.
+    expect(state.clockPanel.redFlags.find((f) => f.key === "blood")?.reportedBy).toBe("support_person");
   });
 
   it("when user reports a warning sign, share text says user name told Jaga", async () => {

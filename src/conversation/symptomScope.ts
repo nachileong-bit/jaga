@@ -142,3 +142,8 @@ export function isEmergencyMention(text: string): boolean {
   }
   return false;
 }
+
+/** Breathless only on effort ("a bit breathless when climb stairs"). Not an emergency. */
+export function isEffortBreathless(text: string): boolean {
+  return EFFORT_BREATHLESS_PATTERN.test(text.toLowerCase());
+}

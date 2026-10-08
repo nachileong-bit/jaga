@@ -242,3 +242,8 @@ export const DID_YOU_GET_CHECKED_BUTTONS: string[] = ["Yes", "Not yet"];
 // Bug 7: non-English message reply.
 export const NON_ENGLISH_REPLY =
   "Sorry, I can only read English for now. \u62b1\u6b49\uff0c\u6211\u76ee\u524d\u53ea\u770b\u5f97\u61c2\u82f1\u6587\u3002Maaf, buat masa ini saya hanya faham Bahasa Inggeris.";
+
+export const BREATHLESS_EFFORT_NO_COUGH =
+  "Feeling breathless should be checked by a doctor today. If it gets worse, or you feel breathless at rest or have chest pain, call 995. For advice, NurseFirst is on 6262 6262.";
+
+export const MODE_REASK = "First, one quick choice so I know who to keep in the loop.";

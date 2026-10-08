@@ -26,7 +26,7 @@ import * as copy from "../copy/en.js";
 import { CLINICS, type ClinicCard } from "../navigation/prototypeData.js";
 import { buildSummary, type GpSummary } from "../navigation/summary.js";
 import { isQuestion, isDiagnosisQuestion, searchKnowledge } from "../knowledge/kb.js";
-import { isCoughMention, isEmergencyMention, isFeverWithoutNumber, isNonCoughSymptom, isOwnCoughReport } from "./symptomScope.js";
+import { isEffortBreathless, isCoughMention, isEmergencyMention, isFeverWithoutNumber, isNonCoughSymptom, isOwnCoughReport } from "./symptomScope.js";
 import type {
   ClockPanelState,
   DemoState,
@@ -237,6 +237,15 @@ export class DemoSession {
     // chest pain" should create the episode AND escalate).
     if (params.text && isEmergencyMention(params.text) && !(this.pending === "symptom" && isCoughMention(params.text))) {
       this.say(copy.EMERGENCY_NOW);
+      // Urgent signs are a threshold the person agreed to: tell the trusted person too.
+      if (this.episode && this.canShare() && !this.redFlagsNotified.has("emergency_words")) {
+        this.redFlagsNotified.add("emergency_words");
+        const text = copy.SUPPORT_URGENT_TEXT(this.person.displayName, "EMERGENCY_995");
+        this.sentToSupport.push({ day: this.currentDay, text, urgent: true });
+        this.system(copy.SENT_TO_SUPPORT(this.scenario.supportPersonName!, text, true));
+      }
+      // Never leave the person stuck: repeat the question that was waiting, with its buttons.
+      this.reaskPending();
       this.runTodo();
       return this.getState();
     }
@@ -375,6 +384,13 @@ export class DemoSession {
 
   private onMode(params: ProcessMessageParams): void {
     const choice = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    // Typed text that is not a choice (a question, a symptom) must not silently pick "On my own".
+    if (!params.button && !/\b(own|alone|myself|just me|me only|trusted|add|someone|daughter|son|family|friend|mei ling)\b/.test(choice)) {
+      if (params.text && isDiagnosisQuestion(params.text)) this.say(copy.KB_NO_DIAGNOSIS);
+      this.say(copy.MODE_REASK);
+      this.reaskPending();
+      return;
+    }
     const wantsSupport = choice.includes("trusted") || choice.includes("add");
 
     if (wantsSupport && this.scenario.supportPersonName) {
@@ -397,6 +413,13 @@ export class DemoSession {
   private async onSymptom(params: ProcessMessageParams): Promise<void> {
     const text = (params.text ?? params.button ?? "").trim();
     if (!text) return;
+
+    // Breathless on effort without a cough: not an emergency, but it needs a doctor today.
+    if (!isCoughMention(text) && isEffortBreathless(text)) {
+      this.say(copy.BREATHLESS_EFFORT_NO_COUGH);
+      this.say(copy.ASK_SYMPTOM);
+      return;
+    }
 
     // Questions at the symptom step: answer from the KB, then ask the symptom
     // question again. Unless the message also clearly describes the person's
@@ -665,6 +688,17 @@ export class DemoSession {
     return false;
   }
 
+  /** Ask again whatever question was waiting, so its buttons are back on screen. */
+  private reaskPending(): void {
+    if (this.pending === "redflag" && this.currentRedFlagKey) {
+      this.say(copy.RED_FLAG_QUESTIONS[this.currentRedFlagKey] ?? "", copy.YES_NO);
+    } else if (this.pending === "onset") {
+      this.say(copy.ASK_ONSET, copy.ONSET_BUTTONS);
+    } else if (this.pending === "mode") {
+      this.say(copy.MODE_QUESTION, [copy.MODE_BUTTONS.on_my_own, copy.MODE_BUTTONS.add_trusted]);
+    }
+  }
+
   private escalateRedFlag(result: PolicyResult): void {
     const key = result.redFlagKey!;
     this.redFlagActive = true;
@@ -677,15 +711,10 @@ export class DemoSession {
     this.say(copy.redFlagMessage(result.action, key));
 
     // Urgent signs are a threshold the user agreed to at setup. Tell them exactly what was sent.
-    if (this.canShare() && !this.redFlagsNotified.has(key)) {
+    // The trusted person already knows when they reported it themselves.
+    if (this.canShare() && !this.redFlagsNotified.has(key) && result.reportedBy !== "support_person") {
       this.redFlagsNotified.add(key);
-      // When the support person reports a warning sign, the share text must
-      // say "<support name> told Jaga", not "<person> told Jaga".
-      const isSupportReport = result.reportedBy === "support_person";
-      const reporterName = isSupportReport
-        ? this.scenario.supportPersonName!
-        : this.person.displayName;
-      const text = copy.SUPPORT_URGENT_TEXT(reporterName, result.action);
+      const text = copy.SUPPORT_URGENT_TEXT(this.person.displayName, result.action);
       this.sentToSupport.push({ day: this.currentDay, text, urgent: true });
       this.system(copy.SENT_TO_SUPPORT(this.scenario.supportPersonName!, text, true));
     }
@@ -796,7 +825,8 @@ export class DemoSession {
       }
       if (day >= this.booking.apptDay + 1 && this.wentAskedForDay !== this.booking.apptDay) {
         this.wentAskedForDay = this.booking.apptDay;
-        this.todo.push(() => this.askWent());
+        // Ask on the day after the appointment itself, even if the demo clock jumps further.
+        this.askWent();
       }
     } else if (this.plan && !this.careSought) {
       if (day >= this.plan.planDay + 1 && this.wentAskedForDay !== this.plan.planDay) {

@@ -913,3 +913,13 @@ body {
 @media (max-width: 768px) {
   .summary-panel { padding: 10px; }
 }
+
+.tour-strip-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #133a30;
+  align-self: center;
+  padding-right: 4px;
+}
