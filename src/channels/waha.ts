@@ -13,6 +13,7 @@ import type { DemoState, TranscriptEntry } from "../conversation/types.js";
 
 export interface Sender {
   sendText(chatId: string, text: string): Promise<void>;
+  sendImage(chatId: string, url: string): Promise<void>;
 }
 
 export interface WahaConfig {
@@ -32,6 +33,19 @@ export class WahaSender implements Sender {
       body: JSON.stringify({ session: this.cfg.session, chatId, text }),
     });
     if (!res.ok) throw new Error(`WAHA sendText failed: ${res.status}`);
+  }
+
+  async sendImage(chatId: string, url: string): Promise<void> {
+    const res = await fetch(`${this.cfg.url.replace(/\/$/, "")}/api/sendImage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Api-Key": this.cfg.apiKey },
+      body: JSON.stringify({
+        session: this.cfg.session,
+        chatId,
+        file: { url, mimetype: "image/png" },
+      }),
+    });
+    if (!res.ok) throw new Error(`WAHA sendImage failed: ${res.status}`);
   }
 }
 
@@ -136,6 +150,15 @@ export class WhatsAppBridge {
 
     for (const entry of fresh) {
       if (entry.role !== "jaga" && entry.role !== "system") continue;
+      if (entry.sticker) {
+        if (this.opts.publicBaseUrl) {
+          await this.sender.sendImage(
+            chatId,
+            `${this.opts.publicBaseUrl.replace(/\/$/, "")}/web/stickers/${entry.sticker}`
+          );
+        }
+        continue;
+      }
       await this.sender.sendText(chatId, renderForWhatsApp(entry, state.sessionId, this.opts.publicBaseUrl));
       if (entry.buttons?.length) state.lastButtons = entry.buttons;
     }

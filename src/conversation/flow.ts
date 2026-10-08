@@ -132,6 +132,7 @@ export class DemoSession {
     this.store.upsertPerson(this.person);
 
     this.say(copy.GREETING);
+    this.sticker("01-hello.png");
     this.say(copy.MODE_QUESTION, [copy.MODE_BUTTONS.on_my_own, copy.MODE_BUTTONS.add_trusted]);
   }
 
@@ -235,6 +236,7 @@ export class DemoSession {
       sourceLabel: hit.source.label,
       sourceUrl: hit.source.url,
     });
+    if (hit.entry.id === "cough_prevent") this.sticker("09-mask.png");
     return true;
   }
 
@@ -478,6 +480,7 @@ export class DemoSession {
     this.monitoringStartDay = this.currentDay;
     this.lastCheckinDayHandled = this.currentDay;
     this.say(copy.CLOCK_STARTED(this.policy.checkinEveryDays));
+    this.sticker("03-counting.png");
   }
 
   private async onNewDay(day: number): Promise<void> {
@@ -500,6 +503,7 @@ export class DemoSession {
         this.pending = "checkin";
         this.outstandingCheckinDay = day; // only counts as asked if it was really shown
         this.say(copy.checkinMessage(), copy.CHECKIN_BUTTONS);
+        this.sticker("02-still-got.png");
       }
     }
 
@@ -617,6 +621,7 @@ export class DemoSession {
     } else {
       this.say(checkin ? ack : copy.GENERIC_ACK);
     }
+    if (t === "better" || t === "gone") this.sticker("08-better.png");
 
     if (result.followUps.includes("ASK_CLARIFICATION") && !this.clarifyAsked) {
       this.todo.push(() => this.askClarification());
@@ -683,11 +688,13 @@ export class DemoSession {
     if (intro) this.say(intro);
     if (first && result) {
       this.say(copy.SEE_GP_INTRO(minDurationDays(this.episode!, this.clock)));
+      this.sticker("04-day-14.png");
       if (result.explain) {
         this.say(copy.SEE_GP_WHY(result.explain), undefined, {
           sourceLabel: result.source?.label,
           sourceUrl: result.source?.url,
         });
+        this.sticker("05-see-gp.png");
       }
     }
     this.showClinicCard();
@@ -716,6 +723,7 @@ export class DemoSession {
       this.pending = null;
       await this.record({ kind: "plan", rawText: `booked (prototype): ${clinic.clinic}, ${clinic.slot}` }, "user");
       this.say(copy.BOOKED(clinic.clinic, clinic.slot), undefined, { card: clinic });
+      this.sticker("06-booked.png");
       this.offerSummary();
       this.queueThresholdShare();
       return;
@@ -775,6 +783,7 @@ export class DemoSession {
     }
     this.pending = "went";
     this.say(copy.DID_YOU_GO, copy.WENT_BUTTONS);
+    this.sticker("07-went-already.png");
   }
 
   private onWent(params: ProcessMessageParams): void {
@@ -923,6 +932,11 @@ export class DemoSession {
     extra?: Partial<Pick<TranscriptEntry, "sourceLabel" | "sourceUrl" | "card" | "link">>
   ): void {
     this.transcript.push({ role: "jaga", text, buttons, day: this.currentDay, ...extra });
+  }
+
+  /** Push a sticker entry (empty text, no bubble). Used AFTER the text message. */
+  private sticker(name: string): void {
+    this.transcript.push({ role: "jaga", text: "", sticker: name, day: this.currentDay });
   }
 
   private system(text: string): void {

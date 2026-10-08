@@ -69,6 +69,13 @@ body {
   cursor: pointer;
 }
 
+.phone-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .phone-contact-name {
   font-weight: 600;
   font-size: 16px;
@@ -125,6 +132,20 @@ body {
   padding: 2px 10px;
   border-radius: 10px;
   margin: 4px 0;
+}
+
+.msg-sticker {
+  align-self: flex-start;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.sticker-img {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  display: block;
 }
 
 .msg-source {
@@ -483,4 +504,17 @@ body {
   border-radius: 8px;
   font-size: 15px;
   z-index: 50;
+}
+
+.phone-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.phone-avatar {
+  width: 40px;
+  height: 40px;
+  background: #f6efe2;
+  border: 2px solid rgba(255, 255, 255, 0.6);
 }

@@ -3,12 +3,12 @@
 You are working in the Jaga repo. Read README.md, src/conversation/flow.ts, src/conversation/types.ts, src/copy/en.ts, src/channels/waha.ts and web/app.js first.
 
 ## Goal
-Give Jaga a friendly personality with its owl mascot. Jaga sends a sticker at key moments and uses a few emojis, in both the web demo and WhatsApp. Safety copy stays plain.
+Give Jaga a friendly personality with its red panda mascot. Jaga sends a sticker at key moments and uses a few emojis, in both the web demo and WhatsApp. Safety copy stays plain.
 
 ## Assets
-Sticker PNGs are in `web/stickers/` (transparent, 512x512):
-01-hello.png, 02-still-got.png, 03-counting.png, 04-day-14.png, 05-see-gp.png, 06-booked.png, 07-went-already.png, 08-better.png.
-Mascot image: `web/brand/jaga.png`.
+Jaga is a red panda in a white singlet, green shorts and blue slippers. Sticker PNGs go in `web/stickers/` (transparent, 512x512):
+01-hello.png, 02-still-got.png, 03-counting.png, 04-day-14.png, 05-see-gp.png, 06-booked.png, 07-went-already.png, 08-better.png, 09-mask.png.
+Mascot image: `web/brand/jaga.png`. The artwork is still being drawn: code against these file names. If a file is missing, the web page must hide that sticker quietly (no broken image icon).
 
 ## Changes
 1. `src/conversation/types.ts`: add optional `sticker?: string` to `TranscriptEntry` (a file name from web/stickers).
@@ -20,9 +20,10 @@ Mascot image: `web/brand/jaga.png`.
    - appointment booked: 06-booked.png
    - "Did you manage to see the doctor?": 07-went-already.png
    - trajectory "better" or "gone" reported: 08-better.png
+   - when a knowledge base answer about preventing coughs (entry cough_prevent) is given: 09-mask.png
    NEVER send a sticker with a warning-sign (red flag) message, a 995 message, the "I don't know" answer, or the "I can't tell you what is causing it" answer. Those stay plain text.
 3. `src/copy/en.ts`: add light emojis, at most one per message, never in red-flag, 995, abstention or diagnosis-refusal copy:
-   - GREETING ends with " 🦉"
+   - GREETING ends with " 🐾"
    - CLOCK_STARTED: start with "⏱️ "
    - check-in question: start with "👋 "
    - booking confirmed: start with "✅ "

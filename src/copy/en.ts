@@ -10,7 +10,7 @@ export const ESCAPE_HATCH = "You can seek medical care at any time if you're con
 // ---- Opening / mode selection ----
 
 export const GREETING =
-  "Hello, I'm Jaga. I help you keep track of symptoms that drag on, and help you get care when it is time.";
+  "Hello, I'm Jaga. I help you keep track of symptoms that drag on, and help you get care when it is time. 🐾";
 
 export const MODE_QUESTION =
   "Would you like to do this on your own, or have someone you trust in the loop?";
@@ -63,13 +63,13 @@ export const RED_FLAG_QUESTIONS: Record<string, string> = {
 export const YES_NO: string[] = ["Yes", "No"];
 
 export const CLOCK_STARTED = (everyDays: number) =>
-  `Thanks. I've started counting. I'll check in every ${everyDays} days. ${ESCAPE_HATCH}`;
+  `⏱️ Thanks. I've started counting. I'll check in every ${everyDays} days. ${ESCAPE_HATCH}`;
 
 // ---- Check-ins ----
 
 export const CHECKIN_BUTTONS: string[] = ["Still got", "Better", "Gone"];
 
-export const checkinMessage = () => `Still coughing? ${ESCAPE_HATCH}`;
+export const checkinMessage = () => `👋 Still coughing? ${ESCAPE_HATCH}`;
 
 export const CHECKIN_ACK_SAME = `Understood. I'll keep counting. ${ESCAPE_HATCH}`;
 export const CHECKIN_ACK_BETTER = `Good to hear. I'll keep counting in case it comes back. ${ESCAPE_HATCH}`;
@@ -151,10 +151,10 @@ export const NAV_REASK = (minDays: number) =>
   `A week ago you said not now. It has been at least ${minDays} days. Would you like to sort out a visit?`;
 
 export const BOOKED = (clinic: string, slot: string) =>
-  `Appointment (prototype): ${slot.toLowerCase()} at ${clinic}.`;
+  `✅ Appointment (prototype): ${slot.toLowerCase()} at ${clinic}.`;
 export const APPT_REMINDER = (clinic: string, time: string) =>
   `Reminder: your appointment (prototype) is today at ${time}, at ${clinic}.`;
-export const DID_YOU_GO = "Did you manage to see the doctor?";
+export const DID_YOU_GO = "🩺 Did you manage to see the doctor?";
 export const WENT_BUTTONS: string[] = ["Yes", "Not yet"];
 export const ASK_DOCTOR_SAID = "Good. What did the doctor ask you to watch for?";
 export const DOCTOR_SAID_ACK = `Thanks, I've saved that. I'll keep checking in. ${ESCAPE_HATCH}`;

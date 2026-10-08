@@ -32,6 +32,7 @@ export interface TranscriptEntry {
   sourceUrl?: string;
   card?: ClinicCard;
   link?: { label: string; href: string };
+  sticker?: string;
   day: number;
 }
 

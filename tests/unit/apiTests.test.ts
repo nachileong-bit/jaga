@@ -23,7 +23,8 @@ const say = (sid: string, text: string, reporter?: "user" | "support_person") =>
 const go = (sid: string, toDay: number) => getSession(sid)!.handleAdvance({ toDay });
 
 const jaga = (s: DemoState) => s.transcript.filter((t) => t.role === "jaga");
-const lastJaga = (s: DemoState): TranscriptEntry => jaga(s)[jaga(s).length - 1];
+const lastJaga = (s: DemoState): TranscriptEntry =>
+  jaga(s).filter((t) => !t.sticker)[jaga(s).filter((t) => !t.sticker).length - 1];
 const allText = (s: DemoState) => s.transcript.map((t) => t.text).join("\n");
 const count = (s: DemoState, needle: string) =>
   s.transcript.filter((t) => t.text.includes(needle)).length;
@@ -333,7 +334,9 @@ describe("B1 and B7 copy safety", () => {
     const root = join(__dirname, "..", "..");
     const files = [
       ...readdirSync(join(root, "src", "copy")).map((f) => join(root, "src", "copy", f)),
-      ...readdirSync(join(root, "web")).map((f) => join(root, "web", f)),
+      ...readdirSync(join(root, "web"))
+        .filter((f) => /\.(html|js|css)$/.test(f))
+        .map((f) => join(root, "web", f)),
       join(root, "src", "navigation", "prototypeData.ts"),
     ];
     for (const file of files) {

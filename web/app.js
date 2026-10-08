@@ -122,6 +122,19 @@ function renderTranscript(transcript) {
     const msg = document.createElement("div");
     msg.className = `msg msg-${entry.role}`;
 
+    // Sticker: render as image, no bubble background
+    if (entry.sticker) {
+      msg.className = "msg msg-sticker";
+      const img = document.createElement("img");
+      img.src = `/web/stickers/${entry.sticker}`;
+      img.alt = "";
+      img.className = "sticker-img";
+      img.onerror = () => { msg.remove(); };
+      msg.appendChild(img);
+      chatBody.appendChild(msg);
+      continue;
+    }
+
     // Text
     const text = document.createElement("div");
     text.textContent = entry.text;

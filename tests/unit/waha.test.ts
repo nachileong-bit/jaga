@@ -5,12 +5,18 @@ import { describe, it, expect } from "vitest";
 import { WhatsAppBridge, parseWahaWebhook, type Sender } from "../../src/channels/waha.js";
 
 class FakeSender implements Sender {
-  sent: { chatId: string; text: string }[] = [];
+  sent: { chatId: string; text?: string; image?: string }[] = [];
   async sendText(chatId: string, text: string) {
     this.sent.push({ chatId, text });
   }
+  async sendImage(chatId: string, url: string) {
+    this.sent.push({ chatId, image: url });
+  }
   to(chatId: string) {
-    return this.sent.filter((m) => m.chatId === chatId).map((m) => m.text);
+    return this.sent.filter((m) => m.chatId === chatId && m.text !== undefined).map((m) => m.text!);
+  }
+  images(chatId: string) {
+    return this.sent.filter((m) => m.chatId === chatId && m.image !== undefined).map((m) => m.image!);
   }
   last(chatId: string) {
     const all = this.to(chatId);
