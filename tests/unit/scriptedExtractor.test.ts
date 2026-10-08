@@ -95,3 +95,29 @@ describe("ScriptedExtractor", () => {
     expect(result[0].kind).toBe("mention");
   });
 });
+
+describe("warning signs in free text", () => {
+  const x = new ScriptedExtractor();
+  const flags = (t: string) =>
+    Object.assign({}, ...x.extract({ text: t }).filter((e) => e.kind === "redflag_answer").map((e) => e.redFlags));
+  it.each([
+    "this morning I coughed some blood",
+    "got blood in my phlegm",
+    "blood when I cough",
+    "pink frothy phlegm",
+  ])("reports blood: %s", (t) => expect(flags(t).blood).toBe("reported"));
+  it.each(["no blood", "didn't see any blood"])("denies blood: %s", (t) =>
+    expect(flags(t).blood).toBe("denied")
+  );
+  it.each(["I donated blood today", "my blood pressure is high", "blood test next week"])(
+    "ignores unrelated blood: %s",
+    (t) => expect(flags(t).blood).toBeUndefined()
+  );
+  it.each(["feeling breathless", "chest pain since last night", "can't breathe properly"])(
+    "reports breathless or chest pain: %s",
+    (t) => expect(flags(t).breathless_or_chest_pain).toBe("reported")
+  );
+  it.each(["no chest pain", "not short of breath"])("does not report a denial: %s", (t) =>
+    expect(flags(t).breathless_or_chest_pain).toBeUndefined()
+  );
+});

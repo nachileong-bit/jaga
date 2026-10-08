@@ -49,6 +49,17 @@ export function extractOnset(text: string): OnsetMatch | null {
   return null;
 }
 
+// Warning-sign phrases. Kept broad on purpose: a false alarm costs a question,
+// a missed one could cost much more.
+const BLOOD_REPORT =
+  /\b(noticed|saw|see|got|have|has|had|there'?s|with|some|spit|spat|coughing|coughed|cough(ing)? up|cough out)\b[^.?!]{0,20}\bblood|\bblood(y)?\b[^.?!]{0,25}\b(cough|phlegm|spit|sputum|mucus)|\b(bloody|pink frothy|blood[- ]stained|blood[- ]streaked)\b[^.?!]{0,15}\b(phlegm|sputum|mucus|spit)/;
+const NEGATED_BLOOD =
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,20}\bblood/;
+const BREATHLESS_REPORT =
+  /\b(breathless|out of breath|short(ness)? of breath|can'?t breathe|cannot breathe|hard to breathe|difficult(y)? (to )?breath(e|ing)|trouble breathing|chest (pain|hurts|tight)|tight(ness)? (in (my|the) )?chest|pain in (my|the) chest)/;
+const NEGATED_BREATHLESS =
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)/;
+
 export class ScriptedExtractor implements Extractor {
   extract(input: ExtractorInput): ExtractedObservation[] {
     const results: ExtractedObservation[] = [];
@@ -111,33 +122,29 @@ export class ScriptedExtractor implements Extractor {
       });
     }
 
-    // 5. "noticed blood" → red flag reported
-    if (
-      button === "Noticed blood" ||
-      lower.includes("noticed blood") ||
-      lower.includes("saw blood") ||
-      lower.includes("coughing blood") ||
-      lower.includes("blood in phlegm") ||
-      lower.includes("blood in my phlegm")
-    ) {
+    // 5 and 6. Blood: reported, or denied. A negation near "blood" is a denial,
+    // anything else that pairs blood with coughing or phlegm is a report.
+    const bloodNegated = NEGATED_BLOOD.test(lower) || lower.includes("no lah");
+    if (button === "Noticed blood" || (!bloodNegated && BLOOD_REPORT.test(lower))) {
       results.push({
         kind: "redflag_answer",
         redFlags: { blood: "reported" },
         rawText: button === "Noticed blood" ? "Noticed blood" : text,
       });
-    }
-
-    // 6. "no lah" / "no blood" → deny blood red flag
-    if (
-      lower.includes("no lah") ||
-      lower.includes("no blood") ||
-      lower.includes("no, no blood") ||
-      lower.includes("didn't see blood") ||
-      lower.includes("nope no blood")
-    ) {
+    } else if (bloodNegated) {
       results.push({
         kind: "redflag_answer",
         redFlags: { blood: "denied" },
+        rawText: text,
+      });
+    }
+
+    // 6b. Breathless or chest pain, in free text. Only reports are read here;
+    // a denial still needs the Yes / No question.
+    if (BREATHLESS_REPORT.test(lower) && !NEGATED_BREATHLESS.test(lower)) {
+      results.push({
+        kind: "redflag_answer",
+        redFlags: { breathless_or_chest_pain: "reported" },
         rawText: text,
       });
     }

@@ -138,3 +138,17 @@ describe("questions in the chat", () => {
     }
   });
 });
+
+describe("warning sign mentioned while the opening questions are asked", () => {
+  it("escalates the blood and still asks the interrupted question", async () => {
+    createSession("rf-1", "ms_lim");
+    const s = getSession("rf-1")!;
+    await s.handleMessage({ button: "On my own" });
+    await s.handleMessage({ text: "cough since before CNY" });
+    await s.handleMessage({ button: "No" }); // blood question
+    const st = await s.handleMessage({ text: "actually this morning I coughed some blood" });
+    expect(st.clockPanel.redFlags.find((f) => f.key === "blood")?.status).toBe("reported");
+    const last = st.transcript.filter((t) => t.role === "jaga").at(-1)!;
+    expect(last.text).toContain(copy.RED_FLAG_QUESTIONS.breathless_or_chest_pain);
+  });
+});

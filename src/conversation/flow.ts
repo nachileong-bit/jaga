@@ -194,7 +194,12 @@ export class DemoSession {
       const duringQuestions = this.pending === "redflag";
       const handled = await this.screenMessageForRedFlags(params, duringQuestions);
       if (handled) {
-        if (duringQuestions) this.todo.push(() => this.askNextRedFlag());
+        if (duringQuestions) {
+          // The question that was interrupted still needs an answer, unless it was just reported.
+          const open = this.currentRedFlagKey;
+          if (open && !this.reportedKeys().has(open)) this.redFlagQueue.unshift(open);
+          this.todo.push(() => this.askNextRedFlag());
+        }
         this.runTodo();
         return this.getState();
       }
