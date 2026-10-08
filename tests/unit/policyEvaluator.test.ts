@@ -181,6 +181,7 @@ describe("hasUnscreenedRedFlags", () => {
         redFlags: {
           blood: "denied",
           breathless_or_chest_pain: "denied",
+          breathless_effort: "denied",
           high_fever: "denied",
           weight_loss: "denied",
           night_sweats: "denied",

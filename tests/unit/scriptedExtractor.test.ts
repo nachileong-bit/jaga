@@ -219,3 +219,13 @@ describe("onset parsing", () => {
     expect(extractOnset("hello there")).toBeNull();
   });
 });
+
+describe("Singlish filler is not a denial", () => {
+  const x = new ScriptedExtractor();
+  const flags = (t: string) =>
+    Object.assign({}, ...x.extract({ text: t }).filter((e) => e.kind === "redflag_answer").map((e) => e.redFlags));
+  it.each(["no lah, got blood in phlegm", "no lah got blood when cough"])("reports blood: %s", (t) =>
+    expect(flags(t).blood).toBe("reported")
+  );
+  it.each(["no got blood", "never see blood"])("denies blood: %s", (t) => expect(flags(t).blood).toBe("denied"));
+});

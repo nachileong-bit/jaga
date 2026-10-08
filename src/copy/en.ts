@@ -58,6 +58,7 @@ export const ONSET_BUTTON_MIN_DAYS: Record<string, number> = {
 export const RED_FLAG_QUESTIONS: Record<string, string> = {
   blood: "Have you noticed any blood when you cough?",
   breathless_or_chest_pain: "Have you felt breathless or had any chest pain?",
+  breathless_effort: "Have you felt breathless only when climbing stairs or walking?",
   high_fever: "Have you had a fever above 38.6 degrees C?",
   weight_loss: "Have you lost weight without trying?",
   night_sweats: "Have you had night sweats?",
@@ -118,13 +119,16 @@ export function redFlagMessage(action: ActionType, key: string): string {
   if (key === "blood") {
     return "Coughing up blood can be serious. Go to the nearest emergency department now. If there is a lot of blood or you are breathless, call 995.";
   }
+  if (key === "breathless_effort") {
+    return "Feeling breathless with a cough should be checked by a doctor today. If it gets worse, or you feel breathless at rest or have chest pain, call 995. For advice, NurseFirst is on 6262 6262.";
+  }
   const signName = WARNING_SIGN_NAMES[key] ?? key.replace(/_/g, " ");
   return `With a cough, HealthHub says ${signName} should be checked by a doctor. Please see a GP in the next day or two.`;
 }
 
 export const RED_FLAG_DENY_REPLY = (key: string) => {
-  const name = key === "blood" ? "blood when coughing" : key === "breathless_or_chest_pain" ? "breathlessness or chest pain" : key.replace(/_/g, " ");
-  const advice = key === "blood" || key === "breathless_or_chest_pain" ? "please go to the nearest emergency department or call 995" : "please see a GP";
+  const name = key === "blood" ? "blood when coughing" : key === "breathless_or_chest_pain" || key === "breathless_effort" ? "breathlessness or chest pain" : key.replace(/_/g, " ");
+  const advice = key === "blood" || key === "breathless_or_chest_pain" ? "please go to the nearest emergency department or call 995" : key === "breathless_effort" ? "please see a GP today" : "please see a GP";
   return `Thanks for telling me. Because ${name} was mentioned earlier, my advice stays the same: ${advice}.`;
 };
 
@@ -220,3 +224,11 @@ export const NOT_COVERED_YET =
 
 export const EMERGENCY_NOW =
   "That sounds like it could be an emergency. Call 995 now, or go to the nearest emergency department.";
+
+// Bug 4: after an emergency message, the next routine check-in asks this first.
+export const DID_YOU_GET_CHECKED = "Did you get checked?";
+export const DID_YOU_GET_CHECKED_BUTTONS: string[] = ["Yes", "Not yet"];
+
+// Bug 7: non-English message reply.
+export const NON_ENGLISH_REPLY =
+  "Sorry, I can only read English for now. \u62b1\u6b49\uff0c\u6211\u76ee\u524d\u53ea\u770b\u5f97\u61c2\u82f1\u6587\u3002Maaf, buat masa ini saya hanya faham Bahasa Inggeris.";

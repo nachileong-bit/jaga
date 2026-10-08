@@ -101,7 +101,8 @@ body {
   max-width: 75%;
   padding: 8px 12px;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 18px; /* Item 8: older-adult readability */
+  line-height: 1.5;
   word-wrap: break-word;
   white-space: pre-wrap;
 }
@@ -177,9 +178,10 @@ body {
   background: #fff;
   border: 1px solid var(--button-bg);
   color: var(--button-bg);
-  padding: 6px 14px;
+  padding: 10px 16px;
+  min-height: 48px; /* Item 8: older-adult readability */
   border-radius: 16px;
-  font-size: 14px;
+  font-size: 17px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -187,6 +189,15 @@ body {
 .msg-btn:hover {
   background: var(--button-bg);
   color: var(--button-text);
+}
+
+.msg-btn:disabled,
+.msg-btn.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #e0e0e0;
+  border-color: #bbb;
+  color: #888;
 }
 
 /* ---- Quick buttons ---- */
@@ -769,6 +780,15 @@ body {
 
   .clock-panel {
     max-height: none;
+  }
+
+  /* Item 8: full-width reply buttons on phones */
+  .msg-buttons {
+    flex-direction: column;
+  }
+  .msg-btn {
+    width: 100%;
+    text-align: center;
   }
 
   /* Tour becomes sticky horizontal strip */

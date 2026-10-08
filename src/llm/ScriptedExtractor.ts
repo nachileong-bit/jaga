@@ -116,8 +116,13 @@ function isoDaysAgoFromBase(days: number, baseIso: string): string {
 // a missed one could cost much more.
 const BLOOD_REPORT =
   /\b(noticed|saw|see|got|have|has|had|there'?s|with|some|spit|spat|coughing|coughed|cough(ing)? up|cough out)\b[^.?!]{0,20}\bblood|\bblood(y)?\b[^.?!]{0,25}\b(cough|phlegm|spit|sputum|mucus)|\b(bloody|pink frothy|blood[- ]stained|blood[- ]streaked)\b[^.?!]{0,15}\b(phlegm|sputum|mucus|spit)|\b(batuk\s+darah|darah\s+.*\bbatuk|batuk\s+.*\bdarah)\b/i;
+// Phrases where "blood" is NOT about coughing blood (Bug 1: false alarm).
+const NON_BLOOD_REPORT =
+  /\b(blood\s+pressure|blood\s+test|blood\s+sugar|blood\s+donation|donated\s+blood|blood\s+thinner|high\s+blood|bp)\b/i;
 const NEGATED_BLOOD =
-  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,20}\bblood\b/;
+  // The negation must directly describe the blood ("no blood", "didn't see any blood",
+  // "no got blood"). Fillers like "no lah, got blood" are NOT a denial.
+  /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)(\s+(any|see|seen|saw|notice|noticed|spot|spotted|find|found|got|have|had))*\s+blood\b/;
 const BREATHLESS_REPORT =
   /\b(breathless|out of breath|short(ness)? of breath|can'?t breathe|cannot breathe|hard to breathe|difficult(y)? (to )?breath(e|ing)|trouble breathing|chest (pain|hurts|tight)|tight(ness)? (in (my|the) )?chest|pain in (my|the) chest)/;
 // "not breathless but chest pain" must still report breathless_or_chest_pain.
@@ -128,6 +133,11 @@ const BREATHLESS_DENIAL_WITH_OVERRIDE =
   /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)\b[^.?!]{0,10}\b(but|however|though|just)\b/i;
 const BREATHLESS_DENIAL =
   /\b(no|not|never|didn'?t|don'?t|haven'?t|hasn'?t|without|nope)\b[^.?!]{0,15}\b(breathless|out of breath|short(ness)? of breath|chest)/i;
+
+// Bug 3: effort-only breathlessness (stairs, walking, climbing, exercise,
+// "a bit breathless", "slightly breathless") is SEE_DOCTOR_TODAY, not 995.
+const BREATHLESS_EFFORT_ONLY =
+  /\b(a\s+bit\s+breathless|slightly\s+breathless|breathless\s+(when|on|after|if)\s+(climb|walking|stairs|exercise|exert)|breathless\s+on\s+(stairs|walking|climbing|effort|exertion)|on\s+effort|on\s+exertion|climb(?:ing)?\s+stairs)\b/i;
 
 // New "see a GP soon" warning signs (action SEE_GP, sticky, source HealthHub Cough)
 const HIGH_FEVER_REPORT = /(\bfever\s+(3[89](\.\d+)?|39(\.\d+)?)\b|\btemperature\s+(above|over|higher than)\s+38\.6\b|\b(high\s+fever)\b)/i;
@@ -173,9 +183,12 @@ export class ScriptedExtractor implements Extractor {
     }
 
     // 3. "took medicine" -> self_treatment (item.confirmed = false until Confirm tapped)
+    //    Item 10: "I took medicine" is the new label; keep "Took medicine" working.
     if (
       button === "Took medicine" ||
+      button === "I took medicine" ||
       lower.includes("took medicine") ||
+      lower.includes("i took medicine") ||
       lower.includes("took cough syrup") ||
       lower.includes("took some medicine") ||
       lower.includes("took a pill")
@@ -183,7 +196,7 @@ export class ScriptedExtractor implements Extractor {
       results.push({
         kind: "self_treatment",
         item: { label: "Cough syrup", confirmed: false },
-        rawText: button === "Took medicine" ? "Took medicine" : text,
+        rawText: button === "Took medicine" ? "Took medicine" : button === "I took medicine" ? "I took medicine" : text,
       });
     }
 
@@ -199,8 +212,9 @@ export class ScriptedExtractor implements Extractor {
     // 5. Blood: reported or denied. A negation only counts as a denial when it
     //    is specifically about blood ("no blood", "didn't see blood").
     //    "no lah" anywhere no longer means "no blood".
+    //    Bug 1: never treat "blood pressure", "blood test", etc. as blood reports.
     const bloodNegated = NEGATED_BLOOD.test(lower);
-    if (button === "Noticed blood" || (!bloodNegated && BLOOD_REPORT.test(lower))) {
+    if (button === "Noticed blood" || (!bloodNegated && BLOOD_REPORT.test(lower) && !NON_BLOOD_REPORT.test(lower))) {
       results.push({
         kind: "redflag_answer",
         redFlags: { blood: "reported" },
@@ -216,11 +230,14 @@ export class ScriptedExtractor implements Extractor {
 
     // 6b. Breathless or chest pain, in free text. Only reports are read here;
     // a denial still needs the Yes / No question.
+    // Bug 3: effort-only breathlessness (stairs, walking, "a bit breathless")
+    // is a separate key (breathless_effort) with SEE_DOCTOR_TODAY urgency.
     // "not breathless but chest pain" must report breathless_or_chest_pain.
     if (BREATHLESS_REPORT.test(lower) && !BREATHLESS_DENIAL.test(lower)) {
+      const key = BREATHLESS_EFFORT_ONLY.test(lower) ? "breathless_effort" : "breathless_or_chest_pain";
       results.push({
         kind: "redflag_answer",
-        redFlags: { breathless_or_chest_pain: "reported" },
+        redFlags: { [key]: "reported" },
         rawText: text,
       });
     } else if (BREATHLESS_REPORT.test(lower) && BREATHLESS_DENIAL_WITH_OVERRIDE.test(lower)) {

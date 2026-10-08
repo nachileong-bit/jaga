@@ -54,7 +54,7 @@ describe("searchKnowledge", () => {
     ["how do I prevent this?", "cough", "cough_prevent"],
     ["what about the yellow phlegm?", "cough", "cough_warning_signs"],
     ["my cough has lasted three weeks, is that a concern?", "cough", "cough_three_weeks"],
-    ["when should an adult with a fever see a doctor?", "care", "fever_adult_when_doctor"],
+    ["when should an adult with a fever see a doctor?", "care" as "cough", "fever_adult_when_doctor"],
     ["my ulcer, how long until I see a doctor?", "cough", "ulcer_when_doctor"],
     ["is it serious?", "mouth_ulcer", "ulcer_usual"],
   ];

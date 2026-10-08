@@ -104,6 +104,12 @@ export class DemoSession {
   // red flags
   private redFlagsNotified = new Set<string>();
   private redFlagActive = false;
+  // Bug 4: hold routine check-ins after an emergency until the person replies.
+  private emergencyPending = false;
+  // Bug 4: the next check-in after an emergency asks "Did you get checked?" first.
+  private needEmergencyCheckin = false;
+  // Bug 5: count unanswered check-in follow-ups for the trusted-person draft.
+  private unansweredFollowupCount = 0;
   // disagreement
   private clarifyAsked = false;
   // care navigation
@@ -189,6 +195,17 @@ export class DemoSession {
       if (this.mode !== "independent" && this.episode) {
         await this.handleSupportPersonMessage(params);
       }
+      this.runTodo();
+      return this.getState();
+    }
+
+    // Bug 4: the user replied, so emergencyPending is cleared. needEmergencyCheckin
+    // persists so the next check-in still asks "Did you get checked?".
+    this.emergencyPending = false;
+
+    // Bug 7: non-English text gets a standard reply and keeps the step.
+    if (params.text && this.isNonEnglish(params.text)) {
+      this.say(copy.NON_ENGLISH_REPLY);
       this.runTodo();
       return this.getState();
     }
@@ -305,6 +322,8 @@ export class DemoSession {
         return this.onRedFlagAnswer(params);
       case "checkin_followup":
         return this.onCheckinFollowup(params);
+      case "emergency_checkin":
+        return this.onEmergencyCheckin(params);
       case "confirm_item":
         return this.onConfirmItem(params);
       case "clarify":
@@ -465,8 +484,13 @@ export class DemoSession {
       "user"
     );
     if (result.redFlagKey) {
-      this.pending = null;
-      this.escalateRedFlag(result);
+      // Bug 7c: only escalate when the most urgent reported sign is the one
+      // just answered. If the most urgent sign was reported earlier, do not
+      // repeat its emergency message.
+      if (result.redFlagKey === key && answer === "reported") {
+        this.pending = null;
+        this.escalateRedFlag(result);
+      }
       // Keep asking the remaining questions afterwards: a second flag may be more urgent.
       this.todo.push(() => this.askNextRedFlag());
       return;
@@ -492,8 +516,17 @@ export class DemoSession {
 
     const newlyReported = [...after].filter((k) => !before.has(k));
     if (newlyReported.length > 0 && result?.redFlagKey) {
-      this.pending = null;
-      this.escalateRedFlag(result);
+      // Bug 7c: only show the message if the most urgent reported sign is one
+      // that was newly reported. If the newly reported sign is less urgent than
+      // one already reported, the advice already stands; answer normally.
+      if (newlyReported.includes(result.redFlagKey)) {
+        this.pending = null;
+        this.escalateRedFlag(result);
+        return true;
+      }
+      // The newly reported sign is less urgent than an already-reported one.
+      // The earlier advice stands. Do not repeat it; answer the message normally.
+      this.say(copy.RED_FLAG_REMINDER);
       return true;
     }
     // A denial of something reported earlier: sticky, never cleared (spec rule 7).
@@ -511,6 +544,11 @@ export class DemoSession {
   private escalateRedFlag(result: PolicyResult): void {
     const key = result.redFlagKey!;
     this.redFlagActive = true;
+    // Bug 4: hold routine check-ins after an emergency message until the person replies.
+    if (result.action === "EMERGENCY_995") {
+      this.emergencyPending = true;
+      this.needEmergencyCheckin = true;
+    }
     // Plain, direct instruction. No persona, no softening.
     this.say(copy.redFlagMessage(result.action, key));
 
@@ -529,8 +567,36 @@ export class DemoSession {
     if (this.monitoringStartDay !== null) return;
     this.monitoringStartDay = this.currentDay;
     this.lastCheckinDayHandled = this.currentDay;
+    // Bug 4: do NOT send "Thanks. I've started counting..." or a sticker in the
+    // same turn as an emergency message. Hold until the person replies.
+    if (this.emergencyPending) return;
     this.say(copy.CLOCK_STARTED(this.policy.checkinEveryDays));
     this.sticker("03-counting.png");
+    // Bug 7b: if a rule already fires when the clock starts (for example
+    // "cough 3 weeks already" meets three_weeks_any), show the GP nudge,
+    // the reason with its source and the clinic card right after the
+    // warning-sign questions. Do not wait for the next check-in.
+    this.todo.push(() => this.checkIntakeNudge());
+  }
+
+  /** Bug 7b: show the GP nudge at intake if a policy rule already fires. */
+  private checkIntakeNudge(): void {
+    if (!this.episode || this.navOffered || this.redFlagActive) return;
+    const result = this.lastResult;
+    if (!result || result.redFlagKey || result.action !== "SEE_GP") return;
+    this.offerNavigation(null, result);
+  }
+
+  /** Bug 4: the first check-in after an emergency asks "Did you get checked?" first. */
+  private askCheckin(day: number): void {
+    this.outstandingCheckinDay = day;
+    if (this.needEmergencyCheckin) {
+      this.pending = "emergency_checkin";
+      this.say(copy.DID_YOU_GET_CHECKED, copy.DID_YOU_GET_CHECKED_BUTTONS);
+    } else {
+      this.say(copy.checkinMessage(), copy.CHECKIN_BUTTONS);
+      this.sticker("02-still-got.png");
+    }
   }
 
   private async onNewDay(day: number): Promise<void> {
@@ -538,22 +604,46 @@ export class DemoSession {
 
     // 1. Check-ins. Ask once per check-in day. Silence is recorded only when the
     //    NEXT check-in day arrives and the previous question was never answered.
+    //    Bug 4: hold all check-ins while the user has not replied after an emergency.
+    //    Bug 5: if a warning-sign question is still unanswered when the next
+    //    check-in comes, ask it again first, before "Still coughing?".
     const every = this.policy.checkinEveryDays;
     if ((day - this.monitoringStartDay) % every === 0 && day > this.lastCheckinDayHandled) {
-      if (this.outstandingCheckinDay !== null) {
+      if (this.emergencyPending) {
+        // Skip this check-in entirely; the user has not replied yet.
+        this.lastCheckinDayHandled = day;
+        this.outstandingCheckinDay = null;
+      } else if (this.pending === "checkin_followup") {
+        // Bug 5: the warning-sign follow-up is still unanswered. Re-ask it first.
+        this.lastCheckinDayHandled = day;
+        this.outstandingCheckinDay = null;
+        this.unansweredFollowupCount += 1;
+        // Bug 5: after 2 unanswered check-ins in Supported mode, draft a message
+        // to the trusted person (shown to the user first, like other shares).
+        if (this.unansweredFollowupCount >= 2 && this.canShare()) {
+          this.todo.push(() => this.previewShare("help"));
+        }
+        this.pending = "checkin_followup";
+        this.say(copy.CHECKIN_FOLLOWUP, copy.YES_NO);
+      } else if (this.outstandingCheckinDay !== null) {
         await this.record(
           { kind: "silence", trajectory: "unknown", rawText: "(no reply to check-in)" },
           "user"
         );
         this.system(copy.SILENCE_RECORDED);
-      }
-      this.lastCheckinDayHandled = day;
-      this.outstandingCheckinDay = null;
-      if (this.pending === null || this.pending === "checkin") {
-        this.pending = "checkin";
-        this.outstandingCheckinDay = day; // only counts as asked if it was really shown
-        this.say(copy.checkinMessage(), copy.CHECKIN_BUTTONS);
-        this.sticker("02-still-got.png");
+        this.lastCheckinDayHandled = day;
+        this.outstandingCheckinDay = null;
+        if (this.pending === null || this.pending === "checkin") {
+          this.pending = "checkin";
+          this.askCheckin(day);
+        }
+      } else {
+        this.lastCheckinDayHandled = day;
+        this.outstandingCheckinDay = null;
+        if (this.pending === null || this.pending === "checkin") {
+          this.pending = "checkin";
+          this.askCheckin(day);
+        }
       }
     }
 
@@ -649,13 +739,35 @@ export class DemoSession {
     const result = this.pendingCheckinResult;
     this.pendingCheckinResult = null;
     this.pending = null;
+    // Bug 5: the user answered the follow-up, so reset the unanswered counter.
+    this.unansweredFollowupCount = 0;
 
     if (pos && !neg) {
       // Yes: ask the warning-sign questions (blood, breathless, etc).
       this.startRedFlagQuestions();
     } else {
       // No: continue as today. Show the policy result (ack, SEE_GP, etc).
-      if (result && !this.lastResult?.redFlagKey) this.afterResult(result, { trajectory: "same" });
+      if (result && !this.lastResult?.redFlagKey) this.afterResult(result, { kind: "checkin", trajectory: "same" });
+    }
+  }
+
+  /** Bug 4: the first check-in after an emergency asks "Did you get checked?" */
+  private async onEmergencyCheckin(params: ProcessMessageParams): Promise<void> {
+    const said = `${params.button ?? ""} ${params.text ?? ""}`.toLowerCase();
+    const pos = /\b(yes|yeah|yup|got|have)\b/.test(said);
+    const neg = /\b(no|nope|none|not|never|don't|dont)\b/.test(said);
+    this.needEmergencyCheckin = false;
+    this.emergencyPending = false;
+    this.pending = null;
+    if (pos && !neg) {
+      // They got checked. Ask what the doctor said.
+      this.pending = "doctor_said";
+      this.say(copy.ASK_DOCTOR_SAID);
+    } else {
+      // Not yet: resume normal monitoring.
+      this.pending = "checkin";
+      this.say(copy.checkinMessage(), copy.CHECKIN_BUTTONS);
+      this.sticker("02-still-got.png");
     }
   }
 
@@ -925,7 +1037,7 @@ export class DemoSession {
 
   private previewShare(kind: ShareKind): void {
     if (!this.canShare() || !this.episode) return;
-    if (this.pending !== null && this.pending !== "nav" && this.pending !== "checkin") {
+    if (this.pending !== null && this.pending !== "nav" && this.pending !== "checkin" && this.pending !== "checkin_followup" && this.pending !== "emergency_checkin") {
       this.todo.push(() => this.previewShare(kind));
       return;
     }
@@ -1017,6 +1129,11 @@ export class DemoSession {
     const dow = new Date(this.clock.nowMs()).getUTCDay(); // 6 = Saturday
     const delta = (6 - dow + 7) % 7 || 7;
     return this.currentDay + delta;
+  }
+
+  /** Bug 7: detect Chinese characters (main trigger for non-English reply). */
+  private isNonEnglish(text: string): boolean {
+    return /[\u4e00-\u9fff]/.test(text);
   }
 
   private say(

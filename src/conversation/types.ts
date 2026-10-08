@@ -14,6 +14,7 @@ export type Pending =
   | "redflag"
   | "checkin"
   | "checkin_followup"
+  | "emergency_checkin"
   | "confirm_item"
   | "clarify"
   | "nav"

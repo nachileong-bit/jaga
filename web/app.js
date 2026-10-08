@@ -6,6 +6,7 @@ let lastState = null; // newest state from the server, used by the tour
 let currentDay = 0;
 let scenarioMode = "supported";
 let isMeiLing = false;
+// Item 9: track which message indices had a button tapped, and which label.
 
 // Scope card state: full on every reload, collapses after first interaction.
 let scopeCardCollapsed = false;
@@ -192,7 +193,12 @@ function renderTranscript(transcript) {
 
   let lastDay = -1;
 
-  for (const entry of transcript) {
+  // Only the newest set of reply buttons can be pressed, and only until the person answers.
+  let activeIdx = -1;
+  transcript.forEach((t, k) => { if (t.buttons && t.buttons.length) activeIdx = k; });
+  if (activeIdx >= 0 && transcript.slice(activeIdx + 1).some((t) => t.role === "user" || t.role === "support_person")) activeIdx = -1;
+
+  for (const [idx, entry] of transcript.entries()) {
     // Day separator
     if (entry.day !== lastDay) {
       const daySep = document.createElement("div");
@@ -275,11 +281,19 @@ function renderTranscript(transcript) {
     if (entry.buttons && entry.buttons.length > 0) {
       const btnContainer = document.createElement("div");
       btnContainer.className = "msg-buttons";
+      const locked = idx !== activeIdx;
       for (const btnLabel of entry.buttons) {
         const btn = document.createElement("button");
         btn.className = "msg-btn";
         btn.textContent = btnLabel;
-        btn.onclick = () => sendMessage(null, btnLabel);
+        if (locked) {
+          btn.disabled = true;
+          btn.classList.add("disabled");
+        }
+        btn.onclick = () => {
+          if (btn.disabled) return;
+          sendMessage(null, btnLabel);
+        };
         btnContainer.appendChild(btn);
       }
       msg.appendChild(btnContainer);
@@ -330,8 +344,8 @@ function renderQuickArea(transcript) {
   } else {
     const b1 = document.createElement("button");
     b1.className = "quick-btn";
-    b1.textContent = "Took medicine";
-    b1.onclick = () => sendMessage(null, "Took medicine");
+    b1.textContent = "I took medicine"; // Item 10: new wording
+    b1.onclick = () => sendMessage(null, "I took medicine");
     quickButtons.appendChild(b1);
 
     const b2 = document.createElement("button");
@@ -415,7 +429,8 @@ function clockRowHtml(label, html) {
 
 function dayOf(iso) {
   if (!iso) return "?";
-  const start = new Date("2026-01-01T08:00:00.000Z").getTime();
+  // Bug 2: must match CLOCK_START in flow.ts, not the SimulatedClock default.
+  const start = new Date("2026-02-20T08:00:00.000Z").getTime();
   const t = new Date(iso).getTime();
   return Math.floor((t - start) / 86400000);
 }
@@ -506,7 +521,7 @@ async function runTourStep(step) {
         () => sendMessage(null, "No"),
       ];
       steps.push(
-        () => sendMessage(null, "Took medicine"),
+        () => sendMessage(null, "I took medicine"),
         () => sendMessage(null, "Correct"),
         () => advance((st && st.day ? st.day : 0) + 7),
         () => sendMessage(null, "Still got"),

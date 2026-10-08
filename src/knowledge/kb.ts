@@ -69,7 +69,11 @@ const TOPIC_WORDS: Record<"cough" | "mouth_ulcer", RegExp> = {
 };
 
 function normalise(text: string): string {
-  return ` ${text.toLowerCase().replace(/[^a-z0-9&.° ]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  // Bug 6: strip Singlish particles so "what can I take for cough ah" still matches.
+  const stripped = text
+    .toLowerCase()
+    .replace(/\b(lah|leh|lor|meh|hor|ah|ahh|leh|lorh)\b/g, " ");
+  return ` ${stripped.replace(/[^a-z0-9&.° ]+/g, " ").replace(/\s+/g, " ").trim()} `;
 }
 
 const CARE_WORDS = / (995|a&e|ae|emergency|ambulance|nurse|nursefirst|hotline|polyclinic|clinic|pharmacist|hospital) /;

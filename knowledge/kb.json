@@ -125,7 +125,11 @@
         "buy",
         "pill",
         "pills",
-        "drug"
+        "drug",
+        "take",
+        "eat",
+        "can take",
+        "what to take"
       ],
       "answer": "HealthHub says to ask your pharmacist. Cough suppressants reduce the urge to cough. Expectorants and mucolytics thin the phlegm. Jaga does not recommend a specific medicine or dose.",
       "source": "hh_cough"

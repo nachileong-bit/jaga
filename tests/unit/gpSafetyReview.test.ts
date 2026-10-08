@@ -34,9 +34,9 @@ const baseEpisode: Episode = {
 
 describe("GP safety review (prompt 08)", () => {
   // Change 1a: cough policy version 0.2.0
-  it("cough policy is version 0.2.0", () => {
+  it("cough policy is version 0.3.0", () => {
     const policy = loadPolicy("cough");
-    expect(policy.version).toBe("0.2.0");
+    expect(policy.version).toBe("0.3.0");
   });
 
   // Change 1b: three_weeks_any rule

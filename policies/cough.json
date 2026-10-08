@@ -1,6 +1,6 @@
 {
   "id": "cough",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "status": "PENDING_CLINICIAN_REVIEW",
   "reviewer": null,
   "sources": [
@@ -25,6 +25,11 @@
     {
       "key": "breathless_or_chest_pain",
       "action": "EMERGENCY_995"
+    },
+    {
+      "key": "breathless_effort",
+      "action": "SEE_DOCTOR_TODAY",
+      "explain": "Feeling breathless on effort (stairs, walking) with a cough should be checked by a doctor today. If it gets worse or you feel breathless at rest, call 995."
     },
     {
       "key": "high_fever",
