@@ -3,6 +3,9 @@
 // Kept in memory (it starts again after a redeploy). Our own test robots are skipped.
 
 import { createHash } from "node:crypto";
+import { RealClock } from "./core/clock.js";
+
+const clock = new RealClock();
 
 export interface Visit {
   visitor: string; // hashed IP + browser, never the raw IP
@@ -17,7 +20,7 @@ export interface Visit {
 
 const BOT_UA = /HeadlessChrome|Playwright|python|curl|bot|spider|crawl/i;
 const visits = new Map<string, Visit>();
-const startedAt = new Date().toISOString();
+const startedAt = clock.now();
 
 export function isRobot(ua: string): boolean {
   return !ua || BOT_UA.test(ua);
@@ -33,7 +36,7 @@ export function track(
 ): { firstTime: boolean } | null {
   if (isRobot(ua)) return null;
   const visitor = createHash("sha256").update(`${ip}|${ua}`).digest("hex").slice(0, 10);
-  const now = new Date().toISOString();
+  const now = clock.now();
   let v = visits.get(visitor);
   const firstTime = !v;
   if (!v) {
@@ -59,7 +62,7 @@ export function track(
 
 export function summary() {
   const list = [...visits.values()].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clock.now().slice(0, 10);
   return {
     since: startedAt,
     people: list.length,

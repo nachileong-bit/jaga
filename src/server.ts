@@ -18,6 +18,7 @@ import type { DemoState } from "./conversation/types.js";
 import { loadKnowledgeBase } from "./knowledge/kb.js";
 import { loadAllPolicies } from "./core/policyLoader.js";
 import { track, summary, statsPage } from "./stats.js";
+import { RealClock } from "./core/clock.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, "..", "web");
@@ -42,14 +43,15 @@ async function main() {
     process.env.WAHA_URL && process.env.WAHA_API_KEY
       ? new WahaSender({ url: process.env.WAHA_URL, apiKey: process.env.WAHA_API_KEY, session: process.env.WAHA_SESSION ?? "default" })
       : null;
+  const wallClock = new RealClock();
   let lastPing = 0;
   function noteVisit(request: { headers: Record<string, unknown>; ip: string }, sessionId: string, kind: "message" | "advance", said?: string) {
     const fwd = String(request.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
     const ua = String(request.headers["user-agent"] ?? "");
     const r = track(fwd || request.ip, ua, sessionId, kind, said);
     // At most one ping every 20 minutes, so a busy judging day is not a flood.
-    if (r?.firstTime && pingSender && notifyChat && Date.now() - lastPing > 20 * 60 * 1000) {
-      lastPing = Date.now();
+    if (r?.firstTime && pingSender && notifyChat && wallClock.nowMs() - lastPing > 20 * 60 * 1000) {
+      lastPing = wallClock.nowMs();
       const s = summary();
       const link = statsKey && process.env.PUBLIC_BASE_URL ? `\nSee who: ${process.env.PUBLIC_BASE_URL.replace(/\/$/, "")}/stats?key=${statsKey}` : "";
       pingSender
