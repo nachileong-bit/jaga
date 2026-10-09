@@ -409,7 +409,7 @@ export class DemoSession {
     if (!params.button && !/\b(own|alone|myself|just me|me only|trusted|add|someone|daughter|son|family|friend|mei ling)\b/.test(choice)) {
       if (params.text && isDiagnosisQuestion(params.text)) this.say(copy.KB_NO_DIAGNOSIS);
       else if (params.text && isCoughMention(params.text)) this.earlySymptom = params.text; // keep it for after the choice
-      this.say(copy.MODE_REASK);
+      this.say(this.earlySymptom ? copy.MODE_REASK_KEPT : copy.MODE_REASK);
       this.reaskPending();
       return;
     }
@@ -435,6 +435,12 @@ export class DemoSession {
   private async onSymptom(params: ProcessMessageParams): Promise<void> {
     const text = (params.text ?? params.button ?? "").trim();
     if (!text) return;
+
+    // "hi", "ok", "yes" or only emoji: not a symptom. Just ask about the cough again.
+    if (!/[a-z]/i.test(text) || /^(hi+|hello|hey|helo|yo|ok|okay|yes|ya|yeah|no|thanks|thank you|good (morning|afternoon|evening))[\s!.?~]*$/i.test(text)) {
+      this.say(copy.ASK_SYMPTOM);
+      return;
+    }
 
     // Breathless on effort without a cough: not an emergency, but it needs a doctor today.
     if (!isCoughMention(text) && isEffortBreathless(text)) {
@@ -801,7 +807,13 @@ export class DemoSession {
     // the day after the appointment (handled below).
     const hasActiveBooking = (this.booking && !this.careSought) || (this.plan && !this.careSought);
     if ((day - this.monitoringStartDay) % every === 0 && day > this.lastCheckinDayHandled && !hasActiveBooking) {
-      if (this.emergencyPending) {
+      if (this.pending === "nav") {
+        // The clinic card was never answered. Bring it back instead of staying silent.
+        this.lastCheckinDayHandled = day;
+        this.outstandingCheckinDay = null;
+        this.pending = null;
+        this.offerNavigation(copy.NAV_UNANSWERED(minDurationDays(this.episode!, this.clock)));
+      } else if (this.emergencyPending) {
         // Skip this check-in entirely; the user has not replied yet.
         this.lastCheckinDayHandled = day;
         this.outstandingCheckinDay = null;
@@ -1071,8 +1083,10 @@ export class DemoSession {
 
     if (intro) this.say(intro);
     if (first && result) {
-      this.say(copy.SEE_GP_INTRO(minDurationDays(this.episode!, this.clock)));
-      this.sticker("04-day-14.png");
+      const days = minDurationDays(this.episode!, this.clock);
+      this.say(copy.SEE_GP_INTRO(days));
+      // The sticker says "Day 14 liao", so only show it when that is roughly true.
+      if (days >= 14 && days < 21) this.sticker("04-day-14.png");
       if (result.explain) {
         this.say(copy.SEE_GP_WHY(result.explain), undefined, {
           sourceLabel: result.source?.label,

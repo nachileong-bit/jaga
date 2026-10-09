@@ -63,7 +63,30 @@ function showNotice(text) {
   setTimeout(() => n.remove(), 6000);
 }
 
+// One thing at a time: while the tour or a reply is running, other taps wait their turn
+// (they are ignored), so the tour and the manual controls never mix into one chat.
+let manualBusy = false;
+function setBusyLook(on) {
+  document.body.classList.toggle("busy", on);
+  [sendBtn, daySlider, scenarioSelect, resetBtn, nextCheckinBtn].forEach((el) => { if (el) el.disabled = on; });
+}
+async function manual(fn) {
+  if (tourRunning || manualBusy) return;
+  manualBusy = true;
+  setBusyLook(true);
+  try {
+    await fn();
+  } finally {
+    manualBusy = false;
+    setBusyLook(false);
+  }
+}
+
 async function reset(scenario) {
+  // A new chat always starts as the person, not as Mei Ling.
+  isMeiLing = false;
+  meiLingToggle.checked = false;
+  chatInput.placeholder = "Type a message...";
   const data = await apiCall("demo/reset", "POST", {
     scenario: scenario || scenarioSelect.value,
     sessionId,
@@ -133,6 +156,7 @@ function buildScopeCardPill() {
   pill.querySelector(".scope-pill-tour").onclick = () => {
     scopeCardCollapsed = false;
     renderTranscript(lastTranscript);
+    chatBody.scrollTop = 0;
   };
   return pill;
 }
@@ -292,7 +316,7 @@ function renderTranscript(transcript) {
         }
         btn.onclick = () => {
           if (btn.disabled) return;
-          sendMessage(null, btnLabel);
+          manual(() => sendMessage(null, btnLabel));
         };
         btnContainer.appendChild(btn);
       }
@@ -313,6 +337,16 @@ function renderTranscript(transcript) {
 // ---- Suggested-reply chips ----
 
 const ASK_SYMPTOM_TEXT = "Tell me about your cough, in your own words. For example: \"cough 3 weeks, got phlegm\". Other symptoms aren't covered yet.";
+
+// True while Jaga's newest buttons are still waiting for an answer.
+function hasOpenQuestion(transcript) {
+  for (let k = transcript.length - 1; k >= 0; k--) {
+    const t = transcript[k];
+    if (t.role === "user" || t.role === "support_person") return false;
+    if (t.buttons && t.buttons.length) return true;
+  }
+  return false;
+}
 
 function renderQuickArea(transcript) {
   const jagaMsgs = transcript.filter((t) => t.role === "jaga" && !t.sticker);
@@ -338,21 +372,21 @@ function renderQuickArea(transcript) {
         tag.textContent = chip.tag;
         btn.appendChild(tag);
       }
-      btn.onclick = () => sendMessage(chip.text, null);
+      btn.onclick = () => manual(() => sendMessage(chip.text, null));
       quickButtons.appendChild(btn);
     }
-  } else if (lastState && lastState.clockPanel && lastState.clockPanel.symptom) {
+  } else if (lastState && lastState.clockPanel && lastState.clockPanel.symptom && !hasOpenQuestion(transcript)) {
     // "I took medicine" and "Noticed blood" only make sense once a cough is being tracked.
     const b1 = document.createElement("button");
     b1.className = "quick-btn";
     b1.textContent = "I took medicine"; // Item 10: new wording
-    b1.onclick = () => sendMessage(null, "I took medicine");
+    b1.onclick = () => manual(() => sendMessage(null, "I took medicine"));
     quickButtons.appendChild(b1);
 
     const b2 = document.createElement("button");
     b2.className = "quick-btn";
     b2.textContent = "Noticed blood";
-    b2.onclick = () => sendMessage(null, "Noticed blood");
+    b2.onclick = () => manual(() => sendMessage(null, "Noticed blood"));
     quickButtons.appendChild(b2);
   }
 }
@@ -450,6 +484,7 @@ const tourSteps = {
 let tourRunning = false;
 function setTourButtonsEnabled(enabled) {
   tourRunning = !enabled;
+  setBusyLook(!enabled);
   const st = lastState;
   const clockStarted = !!(st && st.clockPanel && st.clockPanel.symptom);
   document.querySelectorAll(".tour-btn, .tour-pill").forEach((btn) => {
@@ -502,6 +537,7 @@ function showTourHint(step, text) {
 }
 
 async function runTourStep(step) {
+  if (tourRunning || manualBusy) return;
   setTourButtonsEnabled(false);
   showTourTyping();
 
@@ -601,9 +637,9 @@ document.querySelectorAll(".tour-pill").forEach((btn) => {
 // Clock toggle (mobile)
 clockToggleBtn.addEventListener("click", () => {
   const content = document.getElementById("clock-content");
-  const isHidden = content.style.display === "none";
+  const isHidden = getComputedStyle(content).display === "none";
   if (isHidden) {
-    content.style.display = "";
+    content.style.display = "block";
     clockToggleBtn.textContent = "Hide Jaga Clock";
   } else {
     content.style.display = "none";
@@ -615,9 +651,9 @@ clockToggleBtn.addEventListener("click", () => {
 
 sendBtn.addEventListener("click", () => {
   const text = chatInput.value.trim();
-  if (!text) return;
-  sendMessage(text, null);
+  if (!text || tourRunning || manualBusy) return;
   chatInput.value = "";
+  manual(() => sendMessage(text, null));
 });
 
 chatInput.addEventListener("keypress", (e) => {
@@ -632,8 +668,8 @@ daySlider.addEventListener("input", (e) => {
 
 daySlider.addEventListener("change", (e) => {
   const newDay = parseInt(e.target.value, 10);
-  if (newDay > currentDay) {
-    advance(newDay);
+  if (newDay > currentDay && !tourRunning && !manualBusy) {
+    manual(() => advanceWithFeedback(newDay));
   } else {
     // Can't go backwards - reset the slider
     daySlider.value = currentDay;
@@ -642,20 +678,35 @@ daySlider.addEventListener("change", (e) => {
 });
 
 resetBtn.addEventListener("click", () => {
-  reset(scenarioSelect.value);
+  manual(() => reset(scenarioSelect.value));
 });
 
 scenarioSelect.addEventListener("change", () => {
-  reset(scenarioSelect.value);
+  manual(() => reset(scenarioSelect.value));
 });
 
 nextCheckinBtn.addEventListener("click", () => {
   // Advance to the next check-in day (7 days from current for cough)
   const next = Math.ceil((currentDay + 1) / 7) * 7;
   if (next <= 60) {
-    advance(next);
+    manual(() => advanceWithFeedback(next));
   }
 });
+
+// Moving the clock always shows what happened, so a tap never looks dead.
+async function advanceWithFeedback(toDay) {
+  const started = lastState && lastState.clockPanel && lastState.clockPanel.symptom;
+  if (!started) {
+    showNotice("Tell Jaga about the cough first. The clock starts after that.");
+    daySlider.value = currentDay;
+    dayValue.textContent = currentDay;
+    return;
+  }
+  const before = (lastState && lastState.transcript || []).length;
+  await advance(toDay);
+  const after = (lastState && lastState.transcript || []).length;
+  if (after === before) showNotice(`Now day ${currentDay}. Nothing new from Jaga yet: reply to Jaga's last message to carry on.`);
+}
 
 meiLingToggle.addEventListener("change", (e) => {
   isMeiLing = e.target.checked;

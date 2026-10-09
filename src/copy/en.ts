@@ -175,7 +175,7 @@ export const NAV_BUTTONS = {
 export const NAV_REMINDER_SHORT = (minDays: number) =>
   `This has now gone on for at least ${minDays} days. My suggestion to get it checked still stands.`;
 
-export const REMIND_LATER_ACK = "Sure. I'll ask again this evening.";
+export const REMIND_LATER_ACK = "Sure. I'll ask again a bit later.";
 export const REMIND_LATER_PROMPT = "You asked me to remind you. Shall we sort out a visit?";
 
 export const ASK_WHEN = "No problem. When could you go?";
@@ -186,6 +186,9 @@ export const NOT_NOW_LOGGED = "Understood. I won't keep asking. I'll raise it on
 export const NOT_NOW_FINAL = `Understood. I've noted that, and I won't ask again. ${ESCAPE_HATCH}`;
 export const NAV_REASK = (minDays: number) =>
   `A week ago you said not now. It has been at least ${minDays} days. Would you like to sort out a visit?`;
+
+export const NAV_UNANSWERED = (minDays: number) =>
+  `Checking in. It has been at least ${minDays} days with this cough, and we didn't get to sort out a visit last time. Would you like to now?`;
 
 export const BOOKED = (clinic: string, slot: string) =>
   `✅ Appointment (prototype): ${slot.toLowerCase()} at ${clinic}.`;
@@ -247,3 +250,4 @@ export const BREATHLESS_EFFORT_NO_COUGH =
   "Feeling breathless should be checked by a doctor today. If it gets worse, or you feel breathless at rest or have chest pain, call 995. For advice, NurseFirst is on 6262 6262.";
 
 export const MODE_REASK = "First, one quick choice so I know who to keep in the loop.";
+export const MODE_REASK_KEPT = "Got it, I've kept what you said about your cough. First, one quick choice so I know who to keep in the loop.";

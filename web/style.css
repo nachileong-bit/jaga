@@ -119,7 +119,8 @@ body {
   border-radius: 8px 0 8px 8px;
 }
 
-.msg-support {
+.msg-support,
+.msg-support_person {
   align-self: flex-end;
   background: var(--support-bg);
   border-radius: 8px 0 8px 8px;
@@ -922,4 +923,15 @@ body {
   color: #133a30;
   align-self: center;
   padding-right: 4px;
+}
+
+/* While the tour or a reply is running, other buttons wait (see manual() in app.js). */
+body.busy .msg-btn,
+body.busy .chip-btn,
+body.busy .quick-btn,
+body.busy .ctrl-btn,
+body.busy .tour-btn,
+body.busy .tour-pill {
+  pointer-events: none;
+  opacity: 0.55;
 }
