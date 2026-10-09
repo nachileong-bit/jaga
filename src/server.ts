@@ -17,6 +17,7 @@ import { WahaSender, WhatsAppBridge, parseWahaWebhook } from "./channels/waha.js
 import type { DemoState } from "./conversation/types.js";
 import { loadKnowledgeBase } from "./knowledge/kb.js";
 import { loadAllPolicies } from "./core/policyLoader.js";
+import { track, summary, statsPage } from "./stats.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(__dirname, "..", "web");
@@ -32,6 +33,34 @@ async function main() {
   await app.register(fastifyStatic, {
     root: WEB_DIR,
     prefix: "/web/",
+  });
+
+  // ---- Play counter: a private page and a WhatsApp ping when someone new tries the demo ----
+  const statsKey = process.env.STATS_KEY;
+  const notifyChat = process.env.STATS_NOTIFY_CHAT; // e.g. 6591234567@c.us
+  const pingSender =
+    process.env.WAHA_URL && process.env.WAHA_API_KEY
+      ? new WahaSender({ url: process.env.WAHA_URL, apiKey: process.env.WAHA_API_KEY, session: process.env.WAHA_SESSION ?? "default" })
+      : null;
+  let lastPing = 0;
+  function noteVisit(request: { headers: Record<string, unknown>; ip: string }, sessionId: string, kind: "message" | "advance", said?: string) {
+    const fwd = String(request.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
+    const ua = String(request.headers["user-agent"] ?? "");
+    const r = track(fwd || request.ip, ua, sessionId, kind, said);
+    // At most one ping every 20 minutes, so a busy judging day is not a flood.
+    if (r?.firstTime && pingSender && notifyChat && Date.now() - lastPing > 20 * 60 * 1000) {
+      lastPing = Date.now();
+      const s = summary();
+      const link = statsKey && process.env.PUBLIC_BASE_URL ? `\nSee who: ${process.env.PUBLIC_BASE_URL.replace(/\/$/, "")}/stats?key=${statsKey}` : "";
+      pingSender
+        .sendText(notifyChat, `👀 Someone new is trying the Jaga demo (${s.list[0]?.device ?? "web"}). ${s.peopleToday} today, ${s.people} so far.${link}`)
+        .catch((e) => app.log.warn(e, "stats ping failed"));
+    }
+  }
+
+  app.get("/stats", async (request, reply) => {
+    if (!statsKey || (request.query as { key?: string }).key !== statsKey) return reply.code(404).send({ error: "not found" });
+    reply.type("text/html").send(statsPage());
   });
 
   // ---- Session management ----
@@ -92,6 +121,7 @@ async function main() {
       return reply.code(404).send({ error: "session not found" });
     }
 
+    noteVisit(request, body.sessionId, "message", body.button ?? body.text);
     const state = await session.handleMessage({
       text: body.text,
       button: body.button,
@@ -117,6 +147,7 @@ async function main() {
       return reply.code(404).send({ error: "session not found" });
     }
 
+    noteVisit(request, body.sessionId, "advance");
     const state = await session.handleAdvance({ toDay: body.toDay });
 
     return { state };
